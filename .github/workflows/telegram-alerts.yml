@@ -3,7 +3,12 @@ name: Telegram Alerts
 on:
   schedule:
     - cron: "2,17,32,47 * * * *"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Force a Telegram alert even if setup is not favorable"
+        required: false
+        default: "false"
 
 jobs:
   check:
@@ -30,6 +35,13 @@ jobs:
 
       - name: Run alert check
         env:
+          KRAKEN_API_KEY: ${{ secrets.KRAKEN_API_KEY }}
+          KRAKEN_API_SECRET: ${{ secrets.KRAKEN_API_SECRET }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python -m src.alerts.check --state .alerts_state.json
+        run: |
+          if [ "${{ github.event.inputs.force }}" = "true" ]; then
+            python -m src.alerts.check --state .alerts_state.json --force
+          else
+            python -m src.alerts.check --state .alerts_state.json
+          fi
