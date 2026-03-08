@@ -1,0 +1,184 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Trading Brief Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css?v=9" />
+    <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+  </head>
+  <body>
+    <div class="page">
+      <header class="header">
+        <div class="header-left">
+          <div class="title">Trading Brief Dashboard</div>
+          <div class="subtitle" id="headerPair">BTC/USDC | Binance</div>
+        </div>
+        <div class="header-meta">
+          <div class="meta" id="lastUpdate">Last update: waiting for data</div>
+          <div class="meta" id="nextRefresh">Next refresh: waiting for data</div>
+        </div>
+        <div class="controls">
+          <label for="refreshSelect">Refresh</label>
+          <select id="refreshSelect">
+            <option value="60">1 min</option>
+            <option value="300" selected>5 min</option>
+            <option value="900">15 min</option>
+            <option value="1800">30 min</option>
+            <option value="3600">60 min</option>
+          </select>
+          <button id="refreshNow">Refresh now</button>
+        </div>
+      </header>
+
+      <section class="status-bar status-watch" id="statusBar">
+        <div class="status-label">STATUS: WATCH</div>
+        <div class="status-text" id="statusText">Waiting for data</div>
+        <div class="status-sub" id="statusSub">No active trigger yet</div>
+      </section>
+
+      <section class="snapshot-row">
+        <div class="card snapshot-card">
+          <div class="card-title">PRICE</div>
+          <div class="card-value value-xl" id="price">waiting for data</div>
+          <div class="card-sub" id="priceSub">Last traded</div>
+        </div>
+        <div class="card snapshot-card">
+          <div class="card-title">MARKET BIAS</div>
+          <div class="card-value" id="marketBias">not computed yet</div>
+          <div class="badge" id="biasBadge">pending</div>
+          <div class="card-sub" id="marketBiasSub">waiting for data</div>
+        </div>
+        <div class="card snapshot-card">
+          <div class="card-title">CRITICAL LEVEL</div>
+          <div class="card-value value-xl" id="criticalLevel">not available</div>
+          <div class="card-sub" id="criticalLevelDist">distance not available</div>
+          <div class="card-sub">break -> continuation</div>
+        </div>
+        <div class="card snapshot-card">
+          <div class="card-title">DIRECTIONAL PROBABILITY</div>
+          <div class="prob-mini">
+            <div>
+              <div class="label">LONG</div>
+              <div class="prob-value prob-long" id="probLong">not computed</div>
+            </div>
+            <div>
+              <div class="label">SHORT</div>
+              <div class="prob-value prob-short" id="probShort">not computed</div>
+            </div>
+          </div>
+          <div class="prob-bar">
+            <div class="prob-bar-long" id="probBarLong"></div>
+            <div class="prob-bar-short" id="probBarShort"></div>
+          </div>
+          <div class="prob-meta">
+            <div class="small" id="probEdge">Edge not available</div>
+            <div class="small" id="probConfidence">Confidence not available</div>
+          </div>
+          <details class="prob-details">
+            <summary>Factor breakdown</summary>
+            <ul id="probFactors" class="prob-list"></ul>
+          </details>
+        </div>
+        <div class="card snapshot-card">
+          <div class="card-title">SETUP SCORE</div>
+          <div class="score-bar-track">
+            <div class="score-bar-fill" id="setupScoreFill"></div>
+          </div>
+          <div class="score-bar-value" id="setupScoreValue">not computed</div>
+          <div class="badge" id="setupBadge">pending</div>
+          <div class="card-sub" id="setupGate">Trade gate: not available</div>
+        </div>
+      </section>
+
+      <section class="decision-grid">
+        <div class="card">
+          <div class="card-title">MARKET STATE</div>
+          <div class="state-line" id="marketContext">Price context: waiting for data</div>
+          <div class="state-line" id="marketLiquidity">Liquidity: not available</div>
+          <div class="state-line" id="marketVolatility">Volatility: not available</div>
+          <div class="state-line" id="marketDerivatives">Derivatives: not available</div>
+          <div class="state-line" id="marketLevelEvent">Level event: none</div>
+        </div>
+
+        <div class="card playbook-card">
+          <div class="card-title">PLAYBOOK</div>
+          <div class="decision-status" id="decisionStatus">STATUS: WAIT</div>
+          <div class="decision-action" id="decisionAction">WAIT</div>
+          <div class="decision-level" id="decisionLevel">Watch level: not available</div>
+          <div class="playbook-lines">
+            <div class="playbook-line" id="playbookLong">Sweep + reclaim -> LONG</div>
+            <div class="playbook-line" id="playbookShort">Break below -> SHORT continuation</div>
+            <div class="playbook-line muted" id="playbookWait">Otherwise -> WAIT</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">EXECUTION</div>
+          <div class="exec-line"><span>Position size</span><span id="execPosUsd">not available</span></div>
+          <div class="exec-line"><span>Risk per trade</span><span id="execRisk">not available</span></div>
+          <div class="exec-line"><span>Stop distance</span><span id="execStop">not available</span></div>
+          <div class="exec-line"><span>Exposure active</span><span id="execExposureActive">not available</span></div>
+          <div class="exec-line"><span>Exposure total</span><span id="execExposureTotal">not available</span></div>
+          <div class="exec-line"><span>Entry candidate</span><span id="execEntry">not available</span></div>
+          <div class="exec-line"><span>Stop candidate</span><span id="execStopCandidate">not available</span></div>
+        </div>
+      </section>
+
+      <section class="secondary-row">
+        <div class="card">
+          <div class="card-title">LONG SETUP</div>
+          <div class="label">Trigger</div>
+          <div class="value" id="longCondition">not available</div>
+          <div class="label">Entry</div>
+          <div class="value" id="longEntry">not available</div>
+          <div class="label">Stop</div>
+          <div class="value" id="longStop">not available</div>
+          <div class="label">Target</div>
+          <div class="value" id="longTarget">not available</div>
+        </div>
+        <div class="card">
+          <div class="card-title">SHORT SETUP</div>
+          <div class="label">Trigger</div>
+          <div class="value" id="shortCondition">not available</div>
+          <div class="label">Entry</div>
+          <div class="value" id="shortEntry">not available</div>
+          <div class="label">Stop</div>
+          <div class="value" id="shortStop">not available</div>
+          <div class="label">Target</div>
+          <div class="value" id="shortTarget">not available</div>
+        </div>
+        <div class="card">
+          <div class="card-title">CONTEXT</div>
+          <div class="context-line" id="contextLiquidity">Liquidity distance: not available</div>
+          <div class="context-line" id="contextDerivatives">Derivatives: not available</div>
+          <div class="context-line" id="contextCapital">Capital: not available</div>
+          <div class="context-line">Why</div>
+          <div id="whyList" class="why-chips"></div>
+        </div>
+      </section>
+
+      <section class="bottom-row">
+        <div class="card">
+          <div class="card-title">TP PLAN (LONG)</div>
+          <div class="tp-row" id="tp1L">TP1 waiting for data</div>
+          <div class="tp-row" id="tp2L">TP2 waiting for data</div>
+          <div class="tp-row" id="tp3L">TP3 waiting for data</div>
+          <div class="small">Rule: After TP1 -> stop to breakeven</div>
+        </div>
+        <div class="card">
+          <div class="card-title">TP PLAN (SHORT)</div>
+          <div class="tp-row" id="tp1S">TP1 waiting for data</div>
+          <div class="tp-row" id="tp2S">TP2 waiting for data</div>
+          <div class="tp-row" id="tp3S">TP3 waiting for data</div>
+          <div class="small">Rule: After TP1 -> stop to breakeven</div>
+        </div>
+        <div class="card chart-placeholder">
+          <div class="card-title">MINI CHART</div>
+          <div class="chart-box" id="miniChart">Reserved area for future chart</div>
+        </div>
+      </section>
+    </div>
+
+    <script src="/static/dashboard.js?v=9"></script>
+  </body>
+</html>

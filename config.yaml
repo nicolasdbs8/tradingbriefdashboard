@@ -1,0 +1,146 @@
+project:
+  name: trading-brief-engine
+  timezone: UTC
+
+data:
+  exchange: binance
+  fallback_exchange: kraken
+  symbol: BTC/USDC
+  timeframes:
+    - 1d
+    - 4h
+    - 1h
+    - 15m
+  lookback:
+    1d: 400
+    4h: 400
+    1h: 600
+    15m: 800
+
+indicators:
+  ema_fast: 50
+  ema_slow: 200
+  rsi: 14
+  atr: 14
+  vwap_session: daily_utc
+  volume_sma: 20
+  ema_slope_bars: 10
+
+report:
+  levels_tolerance_pct:
+    1d: 0.01
+    4h: 0.006
+    1h: 0.003
+    15m: 0.003
+  heatmap:
+    name: LiquidationHeatmap.com
+    note: inscription gratuite
+  levels:
+    1d:
+      - 125000
+      - 118000
+      - 106000
+      - 90800
+      - 71500
+      - 67800
+      - 40800
+      - 28800
+      - 19000
+    4h:
+      - 26500
+      - 34000
+      - 35400
+      - 38000
+      - 43500
+      - 47500
+      - 50500
+      - 53500
+      - 58000
+      - 63500
+      - 66000
+      - 69000
+      - 75000
+      - 80800
+      - 86500
+      - 94500
+      - 98700
+      - 102500
+      - 109000
+      - 111500
+      - 115000
+      - 121500
+
+setup:
+  active_preset: intraday
+  presets:
+    intraday:
+      entry_mode: retest
+      retest_buffer_atr: 0.1
+      stop_atr_mult: 0.5
+      target_timeframe: 4h
+    scalp:
+      entry_mode: retest
+      retest_buffer_atr: 0.05
+      stop_atr_mult: 0.35
+      target_timeframe: 1h
+    swing:
+      entry_mode: retest
+      retest_buffer_atr: 0.15
+      stop_atr_mult: 1.0
+      target_timeframe: 4h
+
+logging:
+  level: INFO
+
+derivatives:
+  binance_futures:
+    oi_symbol: BTCUSDT
+    funding_symbol: BTCUSDC
+  fallback:
+    provider: bybit
+    bybit:
+      base_url: https://api.bybit.com
+      category: linear
+      symbol: BTCUSDT
+
+execution:
+  venue: kraken_spot
+  fee_mode: taker
+  slippage_rate: 0.001
+  kraken_pair: XBTUSDC
+  fallback_fees:
+    maker: 0.0016
+    taker: 0.0026
+
+filters:
+  max_cost_to_stop_ratio: 0.35
+  min_rr_net: 1.6
+
+probability_engine:
+  enabled: true
+  weights:
+    htf_trend: 4
+    location: 1
+    liquidity: 1
+    momentum: 2
+    derivatives: 1
+  conditional_adjustments:
+    sweep_detected_long_pct: 8
+    break_confirmed_short_pct: 8
+
+sweep_detection:
+  min_sweep_pct: 0.001
+  atr_multiplier: 0.2
+  reclaim_confirmation_bars: 1
+  breakout_volume_multiplier: 1.2
+
+alerts:
+  enabled: true
+  min_setup_score: 7
+  require_trade_gate: true
+  require_active_setup: true
+  require_active_event: true
+  allowed_active_events:
+    - sweep_reclaim
+    - break
+  cooldown_minutes: 90

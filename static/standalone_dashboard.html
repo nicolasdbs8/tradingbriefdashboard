@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Trading Brief Dashboard (Standalone)</title>
+    <style>
+      body {
+        font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+        background: #0f1216;
+        color: #e8edf2;
+        margin: 0;
+      }
+      .container {
+        max-width: 1200px;
+        margin: 24px auto;
+        padding: 0 16px;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 24px;
+      }
+      header h1 {
+        margin: 0;
+        font-size: 24px;
+      }
+      .controls {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+      .card {
+        background: #151a21;
+        border: 1px solid #222a33;
+        border-radius: 10px;
+        padding: 14px;
+        min-height: 84px;
+      }
+      .card h2 {
+        margin: 0 0 6px 0;
+        font-size: 14px;
+        color: #9fb0c0;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>Trading Brief Dashboard (Standalone)</h1>
+        <div class="controls">
+          <label for="fileInput">Load brief.json:</label>
+          <input type="file" id="fileInput" accept=".json" />
+        </div>
+      </header>
+
+      <section class="grid">
+        <div class="card">
+          <h2>Price</h2>
+          <div id="price">—</div>
+        </div>
+        <div class="card">
+          <h2>Market Bias</h2>
+          <div id="bias">—</div>
+        </div>
+        <div class="card">
+          <h2>Setup Score</h2>
+          <div id="setupScore">—</div>
+        </div>
+        <div class="card">
+          <h2>Critical Level</h2>
+          <div id="criticalLevel">—</div>
+        </div>
+      </section>
+
+      <section class="grid">
+        <div class="card">
+          <h2>Liquidity Distance</h2>
+          <div id="liquidityDistance">—</div>
+        </div>
+        <div class="card">
+          <h2>Position Size</h2>
+          <div id="positionSize">—</div>
+        </div>
+        <div class="card">
+          <h2>Risk per trade</h2>
+          <div id="riskPerTrade">—</div>
+        </div>
+        <div class="card">
+          <h2>Capital</h2>
+          <div id="capitalInfo">—</div>
+        </div>
+      </section>
+
+      <section class="grid">
+        <div class="card">
+          <h2>Derivatives</h2>
+          <div id="derivativesInfo">—</div>
+        </div>
+        <div class="card">
+          <h2>Trade Setups</h2>
+          <div id="tradeSetups">—</div>
+        </div>
+        <div class="card">
+          <h2>TP Plan</h2>
+          <div id="tpPlan">—</div>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      function setText(id, text) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = text;
+      }
+
+      function render(brief) {
+        setText("price", brief.price?.toFixed(2));
+        setText(
+          "bias",
+          `${brief.market_bias.bias} (${brief.market_bias.reason})`
+        );
+        setText("setupScore", brief.setup_score?.total ?? "n/a");
+        setText("criticalLevel", brief.critical_level?.toFixed(2));
+        setText(
+          "liquidityDistance",
+          `Below: ${brief.liquidity_distance.below_pct.toFixed(2)}% | Above: ${brief.liquidity_distance.above_pct.toFixed(2)}% | ${brief.liquidity_distance.asymmetry}`
+        );
+        setText(
+          "positionSize",
+          `${brief.position_size.usdc.toFixed(2)} USDC (~${brief.position_size.btc.toFixed(6)} BTC)`
+        );
+        setText("riskPerTrade", `${brief.position_size.risk_per_trade.toFixed(2)} USDC`);
+        setText(
+          "capitalInfo",
+          `Total: ${brief.capital.total.toFixed(2)} | Active: ${brief.capital.active.toFixed(2)} | Reserve: ${brief.capital.reserve.toFixed(2)}`
+        );
+
+        if (brief.derivatives) {
+          setText(
+            "derivativesInfo",
+            `Provider: ${brief.derivatives.provider} | Funding: ${brief.derivatives.funding_current_pct.toFixed(4)}% | OI 24h: ${brief.derivatives.oi_change_24h_pct?.toFixed(2) ?? "n/a"}%`
+          );
+        } else {
+          setText("derivativesInfo", "Unavailable");
+        }
+
+        setText(
+          "tradeSetups",
+          `LONG: ${brief.setups.long.condition} -> Target ${brief.setups.long.target.toFixed(2)}\nSHORT: ${brief.setups.short.condition} -> Target ${brief.setups.short.target.toFixed(2)}`
+        );
+
+        const tp = brief.tp_plan || [];
+        if (tp.length === 0) {
+          setText("tpPlan", "n/a");
+        } else {
+          setText(
+            "tpPlan",
+            tp.map((lvl) => `TP${lvl.r_multiple}: ${lvl.price.toFixed(2)} (${(lvl.size_pct*100).toFixed(0)}%)`).join(" | ")
+          );
+        }
+      }
+
+      document.getElementById("fileInput").addEventListener("change", (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          const data = JSON.parse(reader.result);
+          render(data);
+        };
+        reader.readAsText(file);
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,69 @@
+{
+  "price": 71221.2,
+  "market_bias": {
+    "daily": "down",
+    "h4_structure": "trend",
+    "h4_direction": "up",
+    "bias": "TREND",
+    "reason": "bearish pullback zone"
+  },
+  "setup_score": {
+    "total": null
+  },
+  "critical_level": 70653.34,
+  "liquidity_distance": {
+    "below_pct": 0.8033590485602038,
+    "above_pct": 3.3189255856493944,
+    "asymmetry": "bearish"
+  },
+  "position_size": {
+    "usdc": 423.9837745775863,
+    "btc": 0.0059530774878509924,
+    "risk_per_trade": 8.317888296480001
+  },
+  "capital": {
+    "total": 4158.94414824,
+    "active": 1663.577659296,
+    "reserve": 2495.3664889439997
+  },
+  "derivatives": {
+    "provider": "binance",
+    "mark_price": 71185.23333942,
+    "oi_change_24h_pct": -7.818159134520608,
+    "funding_current_pct": 8.6e-05
+  },
+  "trade": {
+    "side": "NONE",
+    "entry": 71220.94,
+    "stop": 70464.68672856696,
+    "target": 72733.44654286609,
+    "rr_net": 0.623741807347995
+  },
+  "setups": {
+    "long": {
+      "condition": "sweep < 70,653.34",
+      "target": 73584.71
+    },
+    "short": {
+      "condition": "breakout < 70,653.34",
+      "target": 66147.66
+    }
+  },
+  "tp_plan": [
+    {
+      "price": 71977.19327143305,
+      "size_pct": 0.3,
+      "r_multiple": 1.0
+    },
+    {
+      "price": 72733.44654286609,
+      "size_pct": 0.4,
+      "r_multiple": 2.0
+    },
+    {
+      "price": 73489.69981429914,
+      "size_pct": 0.3,
+      "r_multiple": 3.0
+    }
+  ]
+}
