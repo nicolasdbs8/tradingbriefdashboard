@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 from typing import Dict, List
 
@@ -77,10 +78,14 @@ def load_config(path: str | Path) -> Config:
     preset_name, preset_cfg = _load_setup_preset(data)
     alerts_cfg = data.get("alerts", {})
 
+    exchange = os.getenv("DATA_EXCHANGE", data["data"]["exchange"])
+    fallback_exchange = os.getenv("DATA_FALLBACK_EXCHANGE", data["data"]["fallback_exchange"])
+    symbol = os.getenv("DATA_SYMBOL", data["data"]["symbol"])
+
     return Config(
-        exchange=data["data"]["exchange"],
-        fallback_exchange=data["data"]["fallback_exchange"],
-        symbol=data["data"]["symbol"],
+        exchange=exchange,
+        fallback_exchange=fallback_exchange,
+        symbol=symbol,
         timeframes=data["data"]["timeframes"],
         lookback=data["data"]["lookback"],
         ema_fast=data["indicators"]["ema_fast"],

@@ -35,6 +35,8 @@ jobs:
 
       - name: Run alert check
         env:
+          DATA_EXCHANGE: kraken
+          DATA_FALLBACK_EXCHANGE: kraken
           KRAKEN_API_KEY: ${{ secrets.KRAKEN_API_KEY }}
           KRAKEN_API_SECRET: ${{ secrets.KRAKEN_API_SECRET }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
