@@ -175,6 +175,14 @@ python export_brief.py
 
 Puis ouvre `static/standalone_dashboard.html` et charge `brief.json`.
 
+## GitHub (push du projet)
+```bash
+git status
+git add .
+git commit -m "Update project"
+git push
+```
+
 ## Output attendu (exemple, placeholder)
 
 ```
