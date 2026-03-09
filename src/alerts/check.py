@@ -152,8 +152,15 @@ def _build_message(data: Dict[str, Any], alert_type: str) -> str:
     preset = data.get("setup_profile", "n/a")
     bias = market_bias.get("bias", "n/a")
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    title = "TRADING SETUP TRIGGER" if alert_type == "trigger" else "TRADING SETUP HEADS-UP"
-    alert_type_label = "TRIGGER" if alert_type == "trigger" else "HEADS-UP"
+    if alert_type == "trigger":
+        title = "TRADING SETUP TRIGGER"
+        alert_type_label = "TRIGGER"
+    elif alert_type == "heads_up":
+        title = "TRADING SETUP HEADS-UP"
+        alert_type_label = "HEADS-UP"
+    else:
+        title = "TRADING SETUP TEST"
+        alert_type_label = "FORCED-TEST"
 
     return "\n".join(
         [
@@ -204,13 +211,17 @@ def run_check(config_path: str, state_path: str, dry_run: bool, force: bool) -> 
         print("[alert] same signature already alerted, skipping")
         return 0
 
-    message = _build_message(data, decision.alert_type)
+    message_alert_type = decision.alert_type
+    if force and not decision.favorable:
+        message_alert_type = "force_test"
+    message = _build_message(data, message_alert_type)
     token = os.getenv("TELEGRAM_BOT_TOKEN", "")
     chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
 
     if dry_run:
         print("[alert] dry-run enabled, not sending telegram")
         print(message)
+        return 0
     else:
         if not token or not chat_id:
             print("[alert] telegram credentials missing, not sending")
