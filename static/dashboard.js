@@ -174,6 +174,7 @@ function render(brief) {
   setText("marketBiasSub", brief.market_bias?.reason ?? "not available");
   setText("criticalLevel", fmt(brief.critical_level));
   setText("criticalLevelDist", `${fmtSigned(brief.critical_level_distance_pct)}%`);
+  setText("criticalLevelSource", `Source: ${brief.critical_level_source ?? "1h"}`);
 
   const biasBadge = document.getElementById("biasBadge");
   if (biasBadge) {

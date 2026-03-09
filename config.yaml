@@ -32,7 +32,7 @@ report:
     4h: 0.006
     1h: 0.003
     15m: 0.003
-  critical_level_daily_threshold_pct: 0.008
+  critical_level_daily_threshold_pct: 0.01
   heatmap:
     name: LiquidationHeatmap.com
     note: inscription gratuite

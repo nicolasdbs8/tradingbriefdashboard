@@ -1028,6 +1028,7 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
             "reason": trade_gate_reason,
         },
         "critical_level": report.triggers.get("critical_level", range_low_1h),
+        "critical_level_source": report.triggers.get("critical_level_source", "1h"),
         "critical_level_distance_pct": _distance_pct(
             report.triggers.get("critical_level", range_low_1h), m15.price
         ),
@@ -1066,6 +1067,7 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
         },
         "level_event": {
             "level": report.triggers.get("critical_level", range_low_1h),
+            "level_source": report.triggers.get("critical_level_source", "1h"),
             "sweep_detected": report.triggers.get("sweep_detected", False),
             "reclaim_confirmed": report.triggers.get("reclaim_confirmed", False),
             "break_confirmed": report.triggers.get("break_confirmed", False),
