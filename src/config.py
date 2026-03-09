@@ -24,6 +24,7 @@ class Config:
     ema_slope_bars: int
     log_level: str
     levels_tolerance_pct: Dict[str, float]
+    critical_level_daily_threshold_pct: float
     levels: Dict[str, list[float]]
     heatmap_name: str
     heatmap_note: str
@@ -59,6 +60,13 @@ class Config:
     alerts_require_active_event: bool
     alerts_allowed_active_events: list[str]
     alerts_cooldown_minutes: int
+    alerts_heads_up_enabled: bool
+    alerts_heads_up_min_setup_score: float
+    alerts_heads_up_require_trade_gate: bool
+    alerts_heads_up_require_no_active_setup: bool
+    alerts_heads_up_require_signal_hint: bool
+    alerts_heads_up_max_distance_pct: float
+    alerts_heads_up_cooldown_minutes: int
 
 
 def _load_setup_preset(data: dict) -> tuple[str, dict]:
@@ -77,6 +85,7 @@ def load_config(path: str | Path) -> Config:
     sweep_cfg = data.get("sweep_detection", {})
     preset_name, preset_cfg = _load_setup_preset(data)
     alerts_cfg = data.get("alerts", {})
+    heads_up_cfg = alerts_cfg.get("heads_up", {})
 
     exchange = os.getenv("DATA_EXCHANGE", data["data"]["exchange"])
     fallback_exchange = os.getenv("DATA_FALLBACK_EXCHANGE", data["data"]["fallback_exchange"])
@@ -97,6 +106,9 @@ def load_config(path: str | Path) -> Config:
         ema_slope_bars=data["indicators"]["ema_slope_bars"],
         log_level=data["logging"]["level"],
         levels_tolerance_pct=data["report"]["levels_tolerance_pct"],
+        critical_level_daily_threshold_pct=float(
+            data["report"].get("critical_level_daily_threshold_pct", 0.008)
+        ),
         levels=data["report"]["levels"],
         heatmap_name=data["report"]["heatmap"]["name"],
         heatmap_note=data["report"]["heatmap"]["note"],
@@ -143,4 +155,11 @@ def load_config(path: str | Path) -> Config:
             str(item) for item in alerts_cfg.get("allowed_active_events", ["sweep_reclaim", "break"])
         ],
         alerts_cooldown_minutes=int(alerts_cfg.get("cooldown_minutes", 90)),
+        alerts_heads_up_enabled=bool(heads_up_cfg.get("enabled", True)),
+        alerts_heads_up_min_setup_score=float(heads_up_cfg.get("min_setup_score", 6.5)),
+        alerts_heads_up_require_trade_gate=bool(heads_up_cfg.get("require_trade_gate", True)),
+        alerts_heads_up_require_no_active_setup=bool(heads_up_cfg.get("require_no_active_setup", True)),
+        alerts_heads_up_require_signal_hint=bool(heads_up_cfg.get("require_signal_hint", True)),
+        alerts_heads_up_max_distance_pct=float(heads_up_cfg.get("max_distance_pct", 0.35)),
+        alerts_heads_up_cooldown_minutes=int(heads_up_cfg.get("cooldown_minutes", 60)),
     )

@@ -16,7 +16,7 @@ from .execution.cost_model import (
     passes_cost_filter,
     round_trip_cost_rate,
 )
-from .execution.take_profit import compute_tp_plan
+from .execution.take_profit import TakeProfitLevel, compute_tp_plan
 from .probability.engine import compute_directional_probability
 
 
@@ -116,6 +116,18 @@ def _apply_costs_to_levels(
     if side == "LONG":
         return stop - offset, target + offset
     return stop + offset, target - offset
+
+
+def _cap_tp_levels(levels: list[TakeProfitLevel], target: float, side: str) -> list[TakeProfitLevel]:
+    capped: list[TakeProfitLevel] = []
+    for lvl in levels:
+        price = lvl.price
+        if side == "LONG" and price > target:
+            price = target
+        elif side == "SHORT" and price < target:
+            price = target
+        capped.append(TakeProfitLevel(price=price, size_pct=lvl.size_pct, r_multiple=lvl.r_multiple))
+    return capped
 
 
 def _vol_state(volume: float, volume_sma: float) -> str:
@@ -358,6 +370,7 @@ def format_brief(report: BriefReport) -> str:
     range_low_4h = h4.recent_low or h4.price
     range_high_1h = h1.recent_high or h1.price
     range_low_1h = h1.recent_low or h1.price
+    setup_level = report.triggers.get("critical_level", range_low_1h)
     location_1h = _range_location(h1.price, range_low_1h, range_high_1h)
     vwap_dist_pct = _distance_pct(m15.price, m15.vwap)
     target_high, target_low = _select_target_levels(
@@ -368,7 +381,7 @@ def format_brief(report: BriefReport) -> str:
         range_low_4h,
     )
     long_entry, long_stop, long_target = _setup_plan(
-        range_low_1h,
+        setup_level,
         h1.atr,
         "LONG",
         report.setup_entry_mode,
@@ -385,7 +398,7 @@ def format_brief(report: BriefReport) -> str:
         report.costs,
     )
     short_entry, short_stop, short_target = _setup_plan(
-        range_low_1h,
+        setup_level,
         h1.atr,
         "SHORT",
         report.setup_entry_mode,
@@ -513,7 +526,7 @@ def format_brief(report: BriefReport) -> str:
     trigger_breakout_dist = _distance_pct_abs(breakout_level, m15.price)
     trigger_sweep_dist = _distance_pct_abs(sweep_level, m15.price)
 
-    key_level = range_low_1h
+    key_level = setup_level
 
     liquidity_below_pct = _distance_pct_abs(h1.price, range_low_1h)
     liquidity_above_pct = _distance_pct_abs(range_high_1h, h1.price)
@@ -530,8 +543,14 @@ def format_brief(report: BriefReport) -> str:
     )
 
     tp_plan = compute_tp_plan(entry, stop, trade_side)
+    if tp_plan.levels:
+        tp_plan.levels = _cap_tp_levels(tp_plan.levels, target, trade_side)
     tp_plan_long = compute_tp_plan(long_entry, long_stop, "LONG")
+    if tp_plan_long.levels:
+        tp_plan_long.levels = _cap_tp_levels(tp_plan_long.levels, long_target, "LONG")
     tp_plan_short = compute_tp_plan(short_entry, short_stop, "SHORT")
+    if tp_plan_short.levels:
+        tp_plan_short.levels = _cap_tp_levels(tp_plan_short.levels, short_target, "SHORT")
     tp_lines: list[str] = []
     if tp_plan.levels:
         tp1, tp2, tp3 = tp_plan.levels
@@ -667,13 +686,13 @@ def format_brief(report: BriefReport) -> str:
             "",
             "SETUPS",
             "LONG",
-            f"Condition: sweep < {range_low_1h:,.2f}",
+            f"Condition: sweep < {setup_level:,.2f}",
             "Reclaim range",
             "Probability: conditional",
             f"Invalidation: close < {long_stop:,.2f}",
             f"Target: {long_target:,.2f}",
             "SHORT",
-            f"Condition: breakout < {range_low_1h:,.2f}",
+            f"Condition: breakout < {setup_level:,.2f}",
             "Continuation",
             "Probability: conditional",
             f"Invalidation: close > {short_stop:,.2f}",
@@ -797,6 +816,7 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
 
     range_high_1h = h1.recent_high or h1.price
     range_low_1h = h1.recent_low or h1.price
+    setup_level = report.triggers.get("critical_level", range_low_1h)
     liquidity_below_pct = _distance_pct_abs(h1.price, range_low_1h)
     liquidity_above_pct = _distance_pct_abs(range_high_1h, h1.price)
     liquidity_asymmetry = "bearish" if liquidity_below_pct < liquidity_above_pct else "bullish" if liquidity_above_pct < liquidity_below_pct else "balanced"
@@ -808,7 +828,7 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
         h4.recent_low or h4.price,
     )
     long_entry, long_stop, long_target = _setup_plan(
-        range_low_1h,
+        setup_level,
         h1.atr,
         "LONG",
         report.setup_entry_mode,
@@ -825,7 +845,7 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
         report.costs,
     )
     short_entry, short_stop, short_target = _setup_plan(
-        range_low_1h,
+        setup_level,
         h1.atr,
         "SHORT",
         report.setup_entry_mode,
@@ -901,8 +921,14 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
         setup_class = "PRIORITY"
 
     tp_plan = compute_tp_plan(entry, stop, trade_side)
+    if tp_plan.levels:
+        tp_plan.levels = _cap_tp_levels(tp_plan.levels, target, trade_side)
     tp_plan_long = compute_tp_plan(long_entry, long_stop, "LONG")
+    if tp_plan_long.levels:
+        tp_plan_long.levels = _cap_tp_levels(tp_plan_long.levels, long_target, "LONG")
     tp_plan_short = compute_tp_plan(short_entry, short_stop, "SHORT")
+    if tp_plan_short.levels:
+        tp_plan_short.levels = _cap_tp_levels(tp_plan_short.levels, short_target, "SHORT")
 
     probability = None
     if report.probability_engine_enabled:
@@ -1001,8 +1027,10 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
             "trade_gate": trade_gate,
             "reason": trade_gate_reason,
         },
-        "critical_level": range_low_1h,
-        "critical_level_distance_pct": _distance_pct(range_low_1h, m15.price),
+        "critical_level": report.triggers.get("critical_level", range_low_1h),
+        "critical_level_distance_pct": _distance_pct(
+            report.triggers.get("critical_level", range_low_1h), m15.price
+        ),
         "liquidity_distance": {
             "below_pct": liquidity_below_pct,
             "above_pct": liquidity_above_pct,
@@ -1046,13 +1074,13 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
         "mini_chart": mini_chart,
         "setups": {
             "long": {
-                "condition": f"sweep < {range_low_1h:,.2f}",
+                "condition": f"sweep < {setup_level:,.2f}",
                 "target": long_target,
                 "entry": long_entry,
                 "stop": long_stop,
             },
             "short": {
-                "condition": f"breakout < {range_low_1h:,.2f}",
+                "condition": f"breakout < {setup_level:,.2f}",
                 "target": short_target,
                 "entry": short_entry,
                 "stop": short_stop,

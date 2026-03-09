@@ -44,6 +44,14 @@ MIN_DERIV_REFRESH_SEC = 60
 MIN_FEES_REFRESH_SEC = 300
 
 
+def _nearest_level(levels: list[float], price: float) -> tuple[float | None, float]:
+    if not levels or price == 0:
+        return None, 0.0
+    closest = min(levels, key=lambda lvl: abs(price - lvl))
+    dist_pct = abs(price - closest) / closest if closest else 0.0
+    return closest, dist_pct
+
+
 def _compute_indicators(
     df: pd.DataFrame,
     ema_fast_period: int,
@@ -224,6 +232,10 @@ def generate_trading_brief(
 
         h1_metrics = metrics.get("1h")
         critical_level = (h1_metrics.recent_low if h1_metrics and h1_metrics.recent_low else float(last["close"]))
+        daily_levels = cfg.levels.get("1d", [])
+        daily_level, daily_dist_pct = _nearest_level(daily_levels, float(last["close"]))
+        if daily_level is not None and daily_dist_pct <= cfg.critical_level_daily_threshold_pct:
+            critical_level = daily_level
         atr_val = float(last["atr"]) if "atr" in df15.columns else 0.0
         reclaim = None
         sweep = None

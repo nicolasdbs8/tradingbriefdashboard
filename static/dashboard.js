@@ -1,7 +1,60 @@
-﻿let refreshIntervalSec = 300;
+let refreshIntervalSec = 300;
+let soundEnabled = false;
+let lastAlertSignature = null;
 let chart = null;
 let candleSeries = null;
 let levelLines = [];
+
+function initSoundToggle() {
+  const toggle = document.getElementById("soundToggle");
+  if (!toggle) return;
+  soundEnabled = localStorage.getItem("soundEnabled") === "true";
+  toggle.textContent = `Sound: ${soundEnabled ? "ON" : "OFF"}`;
+  toggle.addEventListener("click", () => {
+    soundEnabled = !soundEnabled;
+    localStorage.setItem("soundEnabled", soundEnabled ? "true" : "false");
+    toggle.textContent = `Sound: ${soundEnabled ? "ON" : "OFF"}`;
+    if (soundEnabled) {
+      playBeep();
+    }
+  });
+}
+
+function playBeep() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = 880;
+    gain.gain.value = 0.08;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.25);
+    osc.onended = () => ctx.close();
+  } catch (err) {
+    // ignore audio errors
+  }
+}
+
+function shouldAlert(brief) {
+  const score = Number(brief.setup_score?.final ?? 0);
+  const gate = Boolean(brief.setup_score?.trade_gate);
+  const activeSetup = brief.trade?.active_setup ?? "NONE";
+  const activeEvent = brief.level_event?.active_event ?? "none";
+  const eventOk = activeEvent === "sweep_reclaim" || activeEvent === "break";
+  return score >= 7 && gate && activeSetup !== "NONE" && eventOk;
+}
+
+function buildAlertSignature(brief) {
+  const score = Number(brief.setup_score?.final ?? 0);
+  const activeSetup = brief.trade?.active_setup ?? "NONE";
+  const activeEvent = brief.level_event?.active_event ?? "none";
+  return `${activeSetup}:${activeEvent}:${score.toFixed(1)}`;
+}
 
 async function fetchBrief() {
   const res = await fetch("/api/brief");
@@ -271,6 +324,14 @@ function render(brief) {
 
   setStatus(status, `${brief.market_bias?.reason ?? "Waiting for data"}`, `Watch ${fmt(brief.critical_level)} for trigger`);
 
+  if (soundEnabled && shouldAlert(brief)) {
+    const sig = buildAlertSignature(brief);
+    if (sig !== lastAlertSignature) {
+      lastAlertSignature = sig;
+      playBeep();
+    }
+  }
+
   const why = [];
   if (brief.trade?.vwap_side === "below") why.push("Price below VWAP");
   if (brief.liquidity_distance?.asymmetry === "bearish") why.push("Near lower liquidity");
@@ -329,3 +390,6 @@ fetchConfig().then((cfg) => {
   }
   setNextRefresh(new Date());
 });
+
+initSoundToggle();
+

@@ -93,6 +93,12 @@ python -m src.alerts.check --dry-run
 python -m src.alerts.check
 ```
 
+Types d'alertes Telegram :
+- `HEADS-UP` : setup en confirmation (pre-alerte)
+- `TRIGGER` : setup confirme et actionnable
+
+Les seuils/cooldowns se reglent dans `config.yaml`, section `alerts`.
+
 ### 2) Dashboard web local (FastAPI)
 
 Démarrer le serveur (après installation des dépendances) :

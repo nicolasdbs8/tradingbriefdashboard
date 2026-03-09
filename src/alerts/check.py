@@ -20,6 +20,7 @@ except ImportError:  # optional dependency for local .env usage
 
 @dataclass
 class AlertDecision:
+    alert_type: str
     favorable: bool
     reason: str
     signature: str
@@ -39,28 +40,72 @@ def _build_signature(data: Dict[str, Any]) -> str:
     return f"{active_setup}:{active_event}:{score}"
 
 
-def _evaluate_favorable(data: Dict[str, Any], cfg) -> AlertDecision:
+def _decision(alert_type: str, favorable: bool, reason: str, data: Dict[str, Any]) -> AlertDecision:
+    return AlertDecision(alert_type=alert_type, favorable=favorable, reason=reason, signature=_build_signature(data), payload=data)
+
+
+def _evaluate_trigger(data: Dict[str, Any], cfg) -> AlertDecision:
     setup_score = data.get("setup_score", {})
     trade = data.get("trade", {})
     level_event = data.get("level_event", {})
 
     if not cfg.alerts_enabled:
-        return AlertDecision(False, "alerts disabled", _build_signature(data), data)
+        return _decision("trigger", False, "alerts disabled", data)
 
-    if setup_score.get("final", 0) < cfg.alerts_min_setup_score:
-        return AlertDecision(False, "setup_score below threshold", _build_signature(data), data)
+    final_score = float(setup_score.get("final", 0))
+    final_score_rounded = round(final_score, 1)
+    if final_score_rounded < cfg.alerts_min_setup_score:
+        return _decision("trigger", False, "setup_score below threshold", data)
 
     if cfg.alerts_require_trade_gate and not setup_score.get("trade_gate", False):
-        return AlertDecision(False, "trade_gate false", _build_signature(data), data)
+        return _decision("trigger", False, "trade_gate false", data)
 
     if cfg.alerts_require_active_setup and trade.get("active_setup") in {None, "NONE"}:
-        return AlertDecision(False, "no active_setup", _build_signature(data), data)
+        return _decision("trigger", False, "no active_setup", data)
 
     active_event = level_event.get("active_event", "none")
     if cfg.alerts_require_active_event and active_event not in cfg.alerts_allowed_active_events:
-        return AlertDecision(False, "active_event not allowed", _build_signature(data), data)
+        return _decision("trigger", False, "active_event not allowed", data)
 
-    return AlertDecision(True, "favorable", _build_signature(data), data)
+    return _decision("trigger", True, "favorable", data)
+
+
+def _evaluate_heads_up(data: Dict[str, Any], cfg) -> AlertDecision:
+    setup_score = data.get("setup_score", {})
+    trade = data.get("trade", {})
+    level_event = data.get("level_event", {})
+    critical_dist = abs(float(data.get("critical_level_distance_pct", 9999)))
+
+    if not cfg.alerts_heads_up_enabled:
+        return _decision("heads_up", False, "heads-up disabled", data)
+
+    final_score = round(float(setup_score.get("final", 0)), 1)
+    if final_score < cfg.alerts_heads_up_min_setup_score:
+        return _decision("heads_up", False, "heads-up score below threshold", data)
+
+    if cfg.alerts_heads_up_require_trade_gate and not setup_score.get("trade_gate", False):
+        return _decision("heads_up", False, "heads-up trade_gate false", data)
+
+    if cfg.alerts_heads_up_require_no_active_setup and trade.get("active_setup") not in {None, "NONE"}:
+        return _decision("heads_up", False, "heads-up already active setup", data)
+
+    if cfg.alerts_heads_up_require_signal_hint:
+        has_level_hint = critical_dist <= cfg.alerts_heads_up_max_distance_pct
+        has_event_hint = bool(level_event.get("sweep_detected") or level_event.get("reclaim_confirmed"))
+        if not (has_level_hint or has_event_hint):
+            return _decision("heads_up", False, "heads-up no confirmation hint", data)
+
+    return _decision("heads_up", True, "heads-up favorable", data)
+
+
+def _evaluate_alert(data: Dict[str, Any], cfg) -> AlertDecision:
+    trigger = _evaluate_trigger(data, cfg)
+    if trigger.favorable:
+        return trigger
+    heads_up = _evaluate_heads_up(data, cfg)
+    if heads_up.favorable:
+        return heads_up
+    return trigger
 
 
 def _load_state(path: Path) -> Dict[str, Any]:
@@ -76,14 +121,18 @@ def _save_state(path: Path, state: Dict[str, Any]) -> None:
     path.write_text(json.dumps(state, indent=2), encoding="utf-8")
 
 
-def _cooldown_passed(state: Dict[str, Any], cooldown_minutes: int) -> bool:
-    last_ts = float(state.get("last_alert_ts", 0))
+def _cooldown_passed(state: Dict[str, Any], cooldown_minutes: int, alert_type: str) -> bool:
+    type_key = f"last_alert_ts_{alert_type}"
+    last_ts = float(state.get(type_key, 0))
+    # Backward compatibility for legacy single-key trigger state.
+    if last_ts <= 0 and alert_type == "trigger":
+        last_ts = float(state.get("last_alert_ts", 0))
     if last_ts <= 0:
         return True
     return (time.time() - last_ts) >= cooldown_minutes * 60
 
 
-def _build_message(data: Dict[str, Any]) -> str:
+def _build_message(data: Dict[str, Any], alert_type: str) -> str:
     setup_score = data.get("setup_score", {})
     trade = data.get("trade", {})
     level_event = data.get("level_event", {})
@@ -103,10 +152,13 @@ def _build_message(data: Dict[str, Any]) -> str:
     preset = data.get("setup_profile", "n/a")
     bias = market_bias.get("bias", "n/a")
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    title = "TRADING SETUP TRIGGER" if alert_type == "trigger" else "TRADING SETUP HEADS-UP"
+    alert_type_label = "TRIGGER" if alert_type == "trigger" else "HEADS-UP"
 
     return "\n".join(
         [
-            "TRADING SETUP ALERT",
+            title,
+            f"Alert type: {alert_type_label}",
             f"Time: {now}",
             f"Symbol: {symbol} ({exchange})",
             f"Price: {price}",
@@ -129,7 +181,7 @@ def run_check(config_path: str, state_path: str, dry_run: bool, force: bool) -> 
     cfg = load_config(config_path)
     brief = generate_trading_brief(config_path=config_path)
     data = brief.get("data", {})
-    decision = _evaluate_favorable(data, cfg)
+    decision = _evaluate_alert(data, cfg)
 
     if not decision.favorable and not force:
         print(f"[alert] not favorable: {decision.reason}")
@@ -139,15 +191,20 @@ def run_check(config_path: str, state_path: str, dry_run: bool, force: bool) -> 
     state = _load_state(state_file)
     signature = decision.signature
 
-    if not _cooldown_passed(state, cfg.alerts_cooldown_minutes) and not force:
+    cooldown_minutes = cfg.alerts_cooldown_minutes if decision.alert_type == "trigger" else cfg.alerts_heads_up_cooldown_minutes
+    if not _cooldown_passed(state, cooldown_minutes, decision.alert_type) and not force:
         print("[alert] cooldown active, skipping")
         return 0
 
-    if state.get("last_signature") == signature and not force:
+    signature_key = f"last_signature_{decision.alert_type}"
+    previous_signature = state.get(signature_key)
+    if previous_signature is None and decision.alert_type == "trigger":
+        previous_signature = state.get("last_signature")
+    if previous_signature == signature and not force:
         print("[alert] same signature already alerted, skipping")
         return 0
 
-    message = _build_message(data)
+    message = _build_message(data, decision.alert_type)
     token = os.getenv("TELEGRAM_BOT_TOKEN", "")
     chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
 
@@ -159,12 +216,12 @@ def run_check(config_path: str, state_path: str, dry_run: bool, force: bool) -> 
             print("[alert] telegram credentials missing, not sending")
             return 0
         send_telegram_message(token, chat_id, message)
-        print("[alert] telegram message sent")
+        print(f"[alert] telegram message sent ({decision.alert_type})")
 
     state.update(
         {
-            "last_alert_ts": time.time(),
-            "last_signature": signature,
+            f"last_alert_ts_{decision.alert_type}": time.time(),
+            f"last_signature_{decision.alert_type}": signature,
         }
     )
     _save_state(state_file, state)

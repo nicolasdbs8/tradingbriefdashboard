@@ -32,6 +32,7 @@ report:
     4h: 0.006
     1h: 0.003
     15m: 0.003
+  critical_level_daily_threshold_pct: 0.008
   heatmap:
     name: LiquidationHeatmap.com
     note: inscription gratuite
@@ -144,3 +145,11 @@ alerts:
     - sweep_reclaim
     - break
   cooldown_minutes: 90
+  heads_up:
+    enabled: true
+    min_setup_score: 6.5
+    require_trade_gate: true
+    require_no_active_setup: true
+    require_signal_hint: true
+    max_distance_pct: 0.35
+    cooldown_minutes: 60
