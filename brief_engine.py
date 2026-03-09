@@ -52,6 +52,21 @@ def _nearest_level(levels: list[float], price: float) -> tuple[float | None, flo
     return closest, dist_pct
 
 
+def _nearest_level_from_groups(level_groups: dict[str, list[float]], price: float) -> tuple[str | None, float | None, float]:
+    best_tf = None
+    best_level = None
+    best_dist = 9999.0
+    for timeframe, levels in level_groups.items():
+        level, dist = _nearest_level(levels, price)
+        if level is None:
+            continue
+        if dist < best_dist:
+            best_tf = timeframe
+            best_level = level
+            best_dist = dist
+    return best_tf, best_level, best_dist
+
+
 def _compute_indicators(
     df: pd.DataFrame,
     ema_fast_period: int,
@@ -232,10 +247,17 @@ def generate_trading_brief(
 
         h1_metrics = metrics.get("1h")
         critical_level = (h1_metrics.recent_low if h1_metrics and h1_metrics.recent_low else float(last["close"]))
-        daily_levels = cfg.levels.get("1d", [])
-        daily_level, daily_dist_pct = _nearest_level(daily_levels, float(last["close"]))
-        if daily_level is not None and daily_dist_pct <= cfg.critical_level_daily_threshold_pct:
-            critical_level = daily_level
+        htf_levels = {
+            "1d": cfg.levels.get("1d", []),
+            "4h": cfg.levels.get("4h", []),
+        }
+        level_tf, nearest_htf_level, nearest_htf_dist_pct = _nearest_level_from_groups(
+            htf_levels, float(last["close"])
+        )
+        critical_level_source = "1h"
+        if nearest_htf_level is not None and nearest_htf_dist_pct <= cfg.critical_level_daily_threshold_pct:
+            critical_level = nearest_htf_level
+            critical_level_source = level_tf or "1h"
         atr_val = float(last["atr"]) if "atr" in df15.columns else 0.0
         reclaim = None
         sweep = None
@@ -273,6 +295,7 @@ def generate_trading_brief(
         triggers.update(
             {
                 "critical_level": critical_level,
+                "critical_level_source": critical_level_source,
                 "sweep_detected": bool(sweep),
                 "reclaim_confirmed": bool(reclaim),
                 "break_confirmed": bool(break_confirmed),
