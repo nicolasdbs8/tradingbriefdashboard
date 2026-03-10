@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <title>Trading Brief Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css?v=9" />
+    <link rel="stylesheet" href="/static/style.css?v=10" />
     <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
   </head>
   <body>
@@ -68,6 +68,7 @@
               <div class="prob-value prob-short" id="probShort">not computed</div>
             </div>
           </div>
+          <div class="prob-ratio" id="probRatio">50 / 50</div>
           <div class="prob-bar">
             <div class="prob-bar-long" id="probBarLong"></div>
             <div class="prob-bar-short" id="probBarShort"></div>
@@ -83,72 +84,117 @@
         </div>
         <div class="card snapshot-card">
           <div class="card-title">SETUP SCORE</div>
+          <div class="setup-score-main" id="setupScoreValue">not computed</div>
           <div class="score-bar-track">
             <div class="score-bar-fill" id="setupScoreFill"></div>
           </div>
-          <div class="score-bar-value" id="setupScoreValue">not computed</div>
-          <div class="badge" id="setupBadge">pending</div>
-          <div class="card-sub" id="setupGate">Trade gate: not available</div>
+          <div class="setup-meta-row">
+            <span class="setup-meta-label">CLASS</span>
+            <span class="badge gray" id="setupBadge">pending</span>
+          </div>
+          <div class="setup-meta-row">
+            <span class="setup-meta-label">TRADE GATE</span>
+            <span class="badge red" id="setupGateBadge">BLOCKED</span>
+          </div>
         </div>
       </section>
 
       <section class="decision-grid">
         <div class="card">
           <div class="card-title">MARKET STATE</div>
-          <div class="state-line" id="marketContext">Price context: waiting for data</div>
-          <div class="state-line" id="marketLiquidity">Liquidity: not available</div>
-          <div class="state-line" id="marketVolatility">Volatility: not available</div>
-          <div class="state-line" id="marketFilters">Filters: not available</div>
-          <div class="state-line" id="marketDerivatives">Derivatives: not available</div>
-          <div class="state-line" id="marketLevelEvent">Level event: none</div>
+          <div class="state-row">
+            <span class="state-key">Context</span>
+            <span class="state-value" id="marketContext">waiting for data</span>
+          </div>
+          <div class="state-row">
+            <span class="state-key">Liquidity</span>
+            <span class="badge gray" id="marketLiquidityBadge">PENDING</span>
+          </div>
+          <div class="state-row">
+            <span class="state-key">Volatility</span>
+            <span class="badge gray" id="marketVolatilityBadge">PENDING</span>
+          </div>
+          <div class="state-row">
+            <span class="state-key">Derivatives</span>
+            <span class="badge gray" id="marketDerivativesBadge">PENDING</span>
+          </div>
+          <div class="state-row">
+            <span class="state-key">Level event</span>
+            <span class="badge gray" id="marketLevelEventBadge">NONE</span>
+          </div>
+          <div class="filters-wrap">
+            <div class="state-key">FILTERS</div>
+            <div class="filters-row">
+              <span class="filter-chip fail" id="filterCost">✘ cost</span>
+              <span class="filter-chip fail" id="filterVwap">✘ vwap</span>
+              <span class="filter-chip fail" id="filterProb">✘ prob</span>
+              <span class="filter-chip pass" id="filterInversion">✔ inversion</span>
+            </div>
+          </div>
         </div>
 
         <div class="card playbook-card">
           <div class="card-title">PLAYBOOK</div>
-          <div class="decision-status" id="decisionStatus">STATUS: WAIT</div>
-          <div class="decision-action" id="decisionAction">WAIT</div>
+          <div class="decision-current">Current action: <span id="decisionAction">WAIT</span></div>
           <div class="decision-level" id="decisionLevel">Watch level: not available</div>
+          <div class="decision-level" id="decisionTriggerDistance">Trigger distance: —</div>
           <div class="playbook-lines">
             <div class="playbook-line" id="playbookLong">Sweep + reclaim -> LONG</div>
             <div class="playbook-line" id="playbookShort">Break below -> SHORT continuation</div>
-            <div class="playbook-line muted" id="playbookWait">Otherwise -> WAIT</div>
+            <div class="playbook-line" id="playbookWait">Otherwise -> WAIT</div>
           </div>
         </div>
 
         <div class="card">
           <div class="card-title">EXECUTION</div>
-          <div class="exec-line"><span>Position size</span><span id="execPosUsd">not available</span></div>
-          <div class="exec-line"><span>Risk per trade</span><span id="execRisk">not available</span></div>
-          <div class="exec-line"><span>Stop distance</span><span id="execStop">not available</span></div>
-          <div class="exec-line"><span>Exposure active</span><span id="execExposureActive">not available</span></div>
-          <div class="exec-line"><span>Exposure total</span><span id="execExposureTotal">not available</span></div>
-          <div class="exec-line"><span>Entry candidate</span><span id="execEntry">not available</span></div>
-          <div class="exec-line"><span>Stop candidate</span><span id="execStopCandidate">not available</span></div>
+          <div class="exec-line"><span>Position size</span><span id="execPosUsd">—</span></div>
+          <div class="exec-line"><span>Risk per trade</span><span id="execRisk">—</span></div>
+          <div class="exec-line"><span>Stop distance</span><span id="execStop">waiting trigger</span></div>
+          <div class="exec-line"><span>Exposure active</span><span id="execExposureActive">—</span></div>
+          <div class="exec-line"><span>Exposure total</span><span id="execExposureTotal">—</span></div>
+          <div class="exec-line"><span>Entry candidate</span><span id="execEntry">pending</span></div>
+          <div class="exec-line"><span>Stop candidate</span><span id="execStopCandidate">pending</span></div>
         </div>
       </section>
 
       <section class="secondary-row">
-        <div class="card">
+        <div class="card setup-card" id="longSetupCard">
           <div class="card-title">LONG SETUP</div>
-          <div class="label">Trigger</div>
-          <div class="value" id="longCondition">not available</div>
-          <div class="label">Entry</div>
-          <div class="value" id="longEntry">not available</div>
-          <div class="label">Stop</div>
-          <div class="value" id="longStop">not available</div>
-          <div class="label">Target</div>
-          <div class="value" id="longTarget">not available</div>
+          <div class="setup-line">
+            <span class="label">Trigger</span>
+            <span class="value" id="longCondition">not available</span>
+          </div>
+          <div class="setup-line">
+            <span class="label">Entry</span>
+            <span class="value setup-entry" id="longEntry">not available</span>
+          </div>
+          <div class="setup-line">
+            <span class="label">Stop</span>
+            <span class="value setup-stop" id="longStop">not available</span>
+          </div>
+          <div class="setup-line">
+            <span class="label">Target</span>
+            <span class="value setup-target" id="longTarget">not available</span>
+          </div>
         </div>
-        <div class="card">
+        <div class="card setup-card" id="shortSetupCard">
           <div class="card-title">SHORT SETUP</div>
-          <div class="label">Trigger</div>
-          <div class="value" id="shortCondition">not available</div>
-          <div class="label">Entry</div>
-          <div class="value" id="shortEntry">not available</div>
-          <div class="label">Stop</div>
-          <div class="value" id="shortStop">not available</div>
-          <div class="label">Target</div>
-          <div class="value" id="shortTarget">not available</div>
+          <div class="setup-line">
+            <span class="label">Trigger</span>
+            <span class="value" id="shortCondition">not available</span>
+          </div>
+          <div class="setup-line">
+            <span class="label">Entry</span>
+            <span class="value setup-entry" id="shortEntry">not available</span>
+          </div>
+          <div class="setup-line">
+            <span class="label">Stop</span>
+            <span class="value setup-stop" id="shortStop">not available</span>
+          </div>
+          <div class="setup-line">
+            <span class="label">Target</span>
+            <span class="value setup-target" id="shortTarget">not available</span>
+          </div>
         </div>
         <div class="card">
           <div class="card-title">CONTEXT</div>
@@ -182,6 +228,6 @@
       </section>
     </div>
 
-    <script src="/static/dashboard.js?v=14"></script>
+    <script src="/static/dashboard.js?v=15"></script>
   </body>
 </html>

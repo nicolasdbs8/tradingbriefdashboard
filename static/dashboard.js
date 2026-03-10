@@ -14,9 +14,7 @@ function initSoundToggle() {
     soundEnabled = !soundEnabled;
     localStorage.setItem("soundEnabled", soundEnabled ? "true" : "false");
     toggle.textContent = `Sound: ${soundEnabled ? "ON" : "OFF"}`;
-    if (soundEnabled) {
-      playBeep();
-    }
+    if (soundEnabled) playBeep();
   });
 }
 
@@ -73,6 +71,7 @@ function setText(id, text) {
 
 function setStatus(status, text, sub) {
   const bar = document.getElementById("statusBar");
+  if (!bar) return;
   bar.classList.remove("status-watch", "status-active", "status-avoid", "status-none");
   if (status === "SETUP ACTIVE") bar.classList.add("status-active");
   else if (status === "AVOID") bar.classList.add("status-avoid");
@@ -80,30 +79,91 @@ function setStatus(status, text, sub) {
   else bar.classList.add("status-watch");
   setText("statusText", text);
   setText("statusSub", sub);
-  bar.querySelector(".status-label").textContent = `STATUS: ${status}`;
+  const label = bar.querySelector(".status-label");
+  if (label) label.textContent = `STATUS: ${status}`;
+}
+
+function hasNumber(n) {
+  return n !== null && n !== undefined && !Number.isNaN(n);
 }
 
 function fmt(n) {
-  if (n === null || n === undefined || Number.isNaN(n)) return "not available";
-  return n.toFixed(2);
+  if (!hasNumber(n)) return "not available";
+  return Number(n).toFixed(2);
 }
 
-function fmtPct(n) {
-  if (n === null || n === undefined || Number.isNaN(n)) return "not available";
-  const rounded = Math.round(n * 10) / 10;
+function fmtOr(n, fallback = "—") {
+  return hasNumber(n) ? fmt(n) : fallback;
+}
+
+function fmtPct(n, fallback = "not available") {
+  if (!hasNumber(n)) return fallback;
+  const rounded = Math.round(Number(n) * 10) / 10;
   if (Math.abs(rounded % 1) < 0.001) return `${rounded.toFixed(0)}%`;
   return `${rounded.toFixed(1)}%`;
 }
 
-function fmtSigned(n) {
-  if (n === null || n === undefined || Number.isNaN(n)) return "not available";
-  const sign = n > 0 ? "+" : "";
-  return `${sign}${n.toFixed(2)}`;
+function fmtSignedPct(n, fallback = "—") {
+  if (!hasNumber(n)) return fallback;
+  const rounded = Math.round(Number(n) * 100) / 100;
+  const sign = rounded > 0 ? "+" : "";
+  return `${sign}${rounded.toFixed(2)}%`;
 }
 
 function setNextRefresh(now) {
   const next = new Date(now.getTime() + refreshIntervalSec * 1000);
-  setText("nextRefresh", `Next refresh: ${next.toISOString().slice(11,16)} UTC`);
+  setText("nextRefresh", `Next refresh: ${next.toISOString().slice(11, 16)} UTC`);
+}
+
+function setBadge(id, label, tone = "gray") {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = label;
+  el.className = `badge ${tone}`;
+}
+
+function setFilterChip(id, label, pass) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.className = `filter-chip ${pass ? "pass" : "fail"}`;
+  el.textContent = `${pass ? "✔" : "✘"} ${label}`;
+}
+
+function clearScenarioHighlight() {
+  ["longSetupCard", "shortSetupCard"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove("active-scenario");
+  });
+  ["playbookLong", "playbookShort", "playbookWait"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove("active");
+  });
+}
+
+function applyScenarioHighlight(activeSetup) {
+  clearScenarioHighlight();
+  if (activeSetup === "LONG") {
+    document.getElementById("longSetupCard")?.classList.add("active-scenario");
+    document.getElementById("playbookLong")?.classList.add("active");
+    return;
+  }
+  if (activeSetup === "SHORT") {
+    document.getElementById("shortSetupCard")?.classList.add("active-scenario");
+    document.getElementById("playbookShort")?.classList.add("active");
+    return;
+  }
+  document.getElementById("playbookWait")?.classList.add("active");
+}
+
+function deriveCurrentAction(brief, scoreValue) {
+  const activeSetup = brief.trade?.active_setup ?? "NONE";
+  if (activeSetup === "LONG") return "LONG ACTIVE";
+  if (activeSetup === "SHORT") return "SHORT ACTIVE";
+  const score = Number(scoreValue ?? 0);
+  const gate = Boolean(brief.setup_score?.trade_gate);
+  const activeEvent = brief.level_event?.active_event ?? "none";
+  if (gate || activeEvent === "break" || activeEvent === "sweep_reclaim" || score >= 6) return "WATCH";
+  return "WAIT";
 }
 
 function initChart() {
@@ -113,20 +173,13 @@ function initChart() {
   container.textContent = "";
   chart = LightweightCharts.createChart(container, {
     height: 140,
-    layout: {
-      background: { color: "transparent" },
-      textColor: "#9fb0c0",
-    },
+    layout: { background: { color: "transparent" }, textColor: "#9fb0c0" },
     grid: {
       vertLines: { color: "rgba(255,255,255,0.05)" },
       horzLines: { color: "rgba(255,255,255,0.05)" },
     },
-    rightPriceScale: {
-      borderColor: "rgba(255,255,255,0.1)",
-    },
-    timeScale: {
-      borderColor: "rgba(255,255,255,0.1)",
-    },
+    rightPriceScale: { borderColor: "rgba(255,255,255,0.1)" },
+    timeScale: { borderColor: "rgba(255,255,255,0.1)" },
   });
   candleSeries = chart.addCandlestickSeries({
     upColor: "#22c55e",
@@ -148,14 +201,8 @@ function clearLevelLines() {
 }
 
 function addLevelLine(price, color, title) {
-  if (!candleSeries || price === null || price === undefined) return;
-  const line = candleSeries.createPriceLine({
-    price,
-    color,
-    lineWidth: 1,
-    lineStyle: 2,
-    title,
-  });
+  if (!candleSeries || !hasNumber(price)) return;
+  const line = candleSeries.createPriceLine({ price, color, lineWidth: 1, lineStyle: 2, title });
   levelLines.push(line);
 }
 
@@ -164,8 +211,9 @@ function render(brief) {
     setText("price", "Error");
     return;
   }
+
   const now = new Date();
-  setText("lastUpdate", `Last update: ${now.toISOString().slice(11,16)} UTC`);
+  setText("lastUpdate", `Last update: ${now.toISOString().slice(11, 16)} UTC`);
   setNextRefresh(now);
   setText("headerPair", `${brief.symbol} | ${brief.exchange}`);
 
@@ -173,66 +221,59 @@ function render(brief) {
   setText("marketBias", brief.market_bias?.bias ?? "not computed yet");
   setText("marketBiasSub", brief.market_bias?.reason ?? "not available");
   setText("criticalLevel", fmt(brief.critical_level));
-  setText("criticalLevelDist", `${fmtSigned(brief.critical_level_distance_pct)}%`);
+  setText("criticalLevelDist", `${fmtSignedPct(brief.critical_level_distance_pct)}`);
   setText("criticalLevelSource", `Source: ${brief.critical_level_source ?? "1h"}`);
 
-  const biasBadge = document.getElementById("biasBadge");
-  if (biasBadge) {
-    const bias = brief.market_bias?.bias ?? "PENDING";
-    biasBadge.textContent = bias;
-    biasBadge.className = `badge ${bias === "TREND" ? "orange" : "gray"}`;
-  }
+  const bias = brief.market_bias?.bias ?? "PENDING";
+  setBadge("biasBadge", bias, bias === "TREND" ? "orange" : "gray");
 
   const scoreValue = brief.setup_score?.final ?? brief.setup_score?.total;
-  if (scoreValue !== null && scoreValue !== undefined) {
-    const pct = (scoreValue / 10) * 100;
+  const setupClass = brief.setup_score?.class ?? brief.setup_score?.quality ?? "pending";
+  const gateOpen = brief.setup_score?.trade_gate;
+  if (hasNumber(scoreValue)) {
     const fill = document.getElementById("setupScoreFill");
-    if (fill) fill.style.width = `${pct}%`;
-    setText("setupScoreValue", `${scoreValue} / 10`);
-    const setupBadge = document.getElementById("setupBadge");
-    if (setupBadge) {
-      const label = brief.setup_score.class ?? brief.setup_score.quality ?? "pending";
-      setupBadge.textContent = label;
-      setupBadge.className = `badge ${label === "PRIORITY" ? "green" : label === "VALID" ? "orange" : label === "WATCHLIST" ? "gray" : "red"}`;
-    }
-    setText("setupGate", `Trade gate: ${brief.setup_score?.trade_gate ? "YES" : "NO"}`);
+    if (fill) fill.style.width = `${Math.max(0, Math.min(100, (Number(scoreValue) / 10) * 100))}%`;
+    setText("setupScoreValue", `${Number(scoreValue).toFixed(1)} / 10`);
+    const clsTone =
+      setupClass === "PRIORITY" ? "green" : setupClass === "VALID" ? "orange" : setupClass === "WATCHLIST" ? "gray" : "red";
+    setBadge("setupBadge", setupClass, clsTone);
+    setBadge("setupGateBadge", gateOpen ? "OPEN" : "BLOCKED", gateOpen ? "green" : "red");
   } else {
     const fill = document.getElementById("setupScoreFill");
     if (fill) fill.style.width = "0%";
     setText("setupScoreValue", "not computed");
-    const setupBadge = document.getElementById("setupBadge");
-    if (setupBadge) {
-      setupBadge.textContent = "pending";
-      setupBadge.className = "badge gray";
-    }
-    setText("setupGate", "Trade gate: not available");
+    setBadge("setupBadge", "PENDING", "gray");
+    setBadge("setupGateBadge", "BLOCKED", "red");
   }
 
   if (brief.directional_probability) {
     const prob = brief.directional_probability;
-    setText("probLong", fmtPct(prob.long_probability_pct));
-    setText("probShort", fmtPct(prob.short_probability_pct));
+    const longPct = Number(prob.long_probability_pct ?? 0);
+    const shortPct = Number(prob.short_probability_pct ?? Math.max(0, 100 - longPct));
+    setText("probLong", fmtPct(longPct));
+    setText("probShort", fmtPct(shortPct));
+    setText("probRatio", `${fmtPct(longPct, "0%")} LONG  |  ${fmtPct(shortPct, "0%")} SHORT`);
     setText("probEdge", `Edge ${prob.edge ?? "not available"}`);
     setText("probConfidence", `Confidence ${prob.confidence ?? "not available"}`);
-    const longWidth = Math.max(0, Math.min(100, prob.long_probability_pct ?? 0));
-    const shortWidth = Math.max(0, 100 - longWidth);
     const longBar = document.getElementById("probBarLong");
     const shortBar = document.getElementById("probBarShort");
-    if (longBar) longBar.style.width = `${longWidth}%`;
-    if (shortBar) shortBar.style.width = `${shortWidth}%`;
+    if (longBar) longBar.style.width = `${Math.max(0, Math.min(100, longPct))}%`;
+    if (shortBar) shortBar.style.width = `${Math.max(0, Math.min(100, shortPct))}%`;
     const list = document.getElementById("probFactors");
     if (list) {
       list.innerHTML = "";
       (prob.factors || []).forEach((f) => {
         const item = document.createElement("li");
-        const sign = f.signed_score > 0 ? "+" : "";
-        item.textContent = `${f.label ?? f.name}: ${sign}${f.signed_score} (${f.reason})`;
+        const signed = Number(f.signed_score ?? 0);
+        const sign = signed > 0 ? "+" : "";
+        item.textContent = `${f.label ?? f.name}: ${sign}${signed} (${f.reason})`;
         list.appendChild(item);
       });
     }
   } else {
     setText("probLong", "not available");
     setText("probShort", "not available");
+    setText("probRatio", "LONG 0%  |  SHORT 0%");
     setText("probEdge", "Edge not available");
     setText("probConfidence", "Confidence not available");
     const longBar = document.getElementById("probBarLong");
@@ -258,77 +299,101 @@ function render(brief) {
     }
   }
 
-  setText("playbookLong", `Sweep + reclaim -> LONG`);
-  setText("playbookShort", `Break below -> SHORT continuation`);
-
-  setText("longCondition", brief.setups?.long?.condition ?? "not available");
-  setText("longEntry", fmt(brief.setups?.long?.entry));
-  setText("longStop", fmt(brief.setups?.long?.stop));
-  setText("longTarget", fmt(brief.setups?.long?.target));
-  setText("shortCondition", brief.setups?.short?.condition ?? "not available");
-  setText("shortEntry", fmt(brief.setups?.short?.entry));
-  setText("shortStop", fmt(brief.setups?.short?.stop));
-  setText("shortTarget", fmt(brief.setups?.short?.target));
+  setText("playbookLong", "Sweep + reclaim -> LONG");
+  setText("playbookShort", "Break below -> SHORT continuation");
+  setText("longCondition", brief.setups?.long?.condition ?? "pending");
+  setText("longEntry", fmtOr(brief.setups?.long?.entry, "pending"));
+  setText("longStop", fmtOr(brief.setups?.long?.stop, "pending"));
+  setText("longTarget", fmtOr(brief.setups?.long?.target, "pending"));
+  setText("shortCondition", brief.setups?.short?.condition ?? "pending");
+  setText("shortEntry", fmtOr(brief.setups?.short?.entry, "pending"));
+  setText("shortStop", fmtOr(brief.setups?.short?.stop, "pending"));
+  setText("shortTarget", fmtOr(brief.setups?.short?.target, "pending"));
 
   if (brief.tp_plan_long && brief.tp_plan_long.length >= 3) {
-    setText("tp1L", `TP1 ${fmt(brief.tp_plan_long[0].price)} (${(brief.tp_plan_long[0].size_pct*100).toFixed(0)}%)`);
-    setText("tp2L", `TP2 ${fmt(brief.tp_plan_long[1].price)} (${(brief.tp_plan_long[1].size_pct*100).toFixed(0)}%)`);
-    setText("tp3L", `TP3 ${fmt(brief.tp_plan_long[2].price)} (${(brief.tp_plan_long[2].size_pct*100).toFixed(0)}%)`);
+    setText("tp1L", `TP1 ${fmt(brief.tp_plan_long[0].price)} (${(brief.tp_plan_long[0].size_pct * 100).toFixed(0)}%)`);
+    setText("tp2L", `TP2 ${fmt(brief.tp_plan_long[1].price)} (${(brief.tp_plan_long[1].size_pct * 100).toFixed(0)}%)`);
+    setText("tp3L", `TP3 ${fmt(brief.tp_plan_long[2].price)} (${(brief.tp_plan_long[2].size_pct * 100).toFixed(0)}%)`);
   }
   if (brief.tp_plan_short && brief.tp_plan_short.length >= 3) {
-    setText("tp1S", `TP1 ${fmt(brief.tp_plan_short[0].price)} (${(brief.tp_plan_short[0].size_pct*100).toFixed(0)}%)`);
-    setText("tp2S", `TP2 ${fmt(brief.tp_plan_short[1].price)} (${(brief.tp_plan_short[1].size_pct*100).toFixed(0)}%)`);
-    setText("tp3S", `TP3 ${fmt(brief.tp_plan_short[2].price)} (${(brief.tp_plan_short[2].size_pct*100).toFixed(0)}%)`);
+    setText("tp1S", `TP1 ${fmt(brief.tp_plan_short[0].price)} (${(brief.tp_plan_short[0].size_pct * 100).toFixed(0)}%)`);
+    setText("tp2S", `TP2 ${fmt(brief.tp_plan_short[1].price)} (${(brief.tp_plan_short[1].size_pct * 100).toFixed(0)}%)`);
+    setText("tp3S", `TP3 ${fmt(brief.tp_plan_short[2].price)} (${(brief.tp_plan_short[2].size_pct * 100).toFixed(0)}%)`);
   }
 
   if (brief.derivatives) {
     setText("contextDerivatives", `Derivatives: ${brief.derivatives.oi_change_24h_pct < 0 ? "deleveraging" : "neutral"}`);
   } else {
-    setText("contextDerivatives", "Derivatives: not available");
+    setText("contextDerivatives", "Derivatives: pending");
   }
-
-  if (brief.level_event) {
-    setText("marketLevelEvent", `Level event: ${brief.level_event.active_event || "none"}`);
-  } else {
-    setText("marketLevelEvent", "Level event: none");
-  }
-
   setText("contextLiquidity", `Liquidity distance: ${fmt(brief.liquidity_distance?.below_pct)}% / ${fmt(brief.liquidity_distance?.above_pct)}%`);
   setText("contextCapital", `Capital: ${fmt(brief.capital?.total)} total / ${fmt(brief.capital?.active)} active`);
 
-  setText("marketContext", `Price context: ${brief.market_bias?.reason ?? "not available"}`);
-  setText("marketLiquidity", `Liquidity: ${brief.liquidity_distance?.asymmetry ?? "not available"}`);
-  setText("marketVolatility", `Volatility: ${brief.market_state?.volatility ?? "not available"}`);
-  const tf = brief.trade?.filters;
-  setText(
-    "marketFilters",
-    `Filters: cost=${tf?.cost_pass ? "PASS" : "FAIL"} | vwap=${tf?.vwap_pass ? "PASS" : "FAIL"} | prob=${tf?.probability_pass ? "PASS" : "FAIL"} | inversion=${tf?.inversion_pass ? "PASS" : "FAIL"}`
-  );
+  const contextReason = brief.market_bias?.reason ?? "pending";
+  setText("marketContext", contextReason);
 
-  let derivativesSummary = "Derivatives: not available";
+  const liquidityRaw = String(brief.liquidity_distance?.asymmetry ?? "pending");
+  const liquidityText = liquidityRaw.toUpperCase();
+  const liquidityTone = liquidityRaw === "bullish" ? "green" : liquidityRaw === "bearish" ? "red" : "gray";
+  setBadge("marketLiquidityBadge", liquidityText, liquidityTone);
+
+  const volRaw = String(brief.market_state?.volatility ?? "pending");
+  const volText = volRaw.toUpperCase();
+  const volTone = volRaw === "up" ? "orange" : volRaw === "flat" || volRaw === "normal" ? "blue" : volRaw === "down" ? "gray" : "gray";
+  setBadge("marketVolatilityBadge", volText, volTone);
+
+  let derivativesState = "NEUTRAL";
+  let derivativesTone = "gray";
   if (brief.derivatives) {
-    if (brief.derivatives.funding_current_pct > 0.03) derivativesSummary = "Derivatives: long bias";
-    else if (brief.derivatives.funding_current_pct < -0.03) derivativesSummary = "Derivatives: short bias";
-    else if (brief.derivatives.oi_change_24h_pct < 0) derivativesSummary = "Derivatives: deleveraging";
-    else derivativesSummary = "Derivatives: neutral";
+    if (brief.derivatives.funding_current_pct > 0.03) {
+      derivativesState = "BULLISH";
+      derivativesTone = "green";
+    } else if (brief.derivatives.funding_current_pct < -0.03) {
+      derivativesState = "BEARISH";
+      derivativesTone = "red";
+    } else if (brief.derivatives.oi_change_24h_pct < 0) {
+      derivativesState = "DELEVERAGING";
+      derivativesTone = "orange";
+    } else {
+      derivativesState = "NEUTRAL";
+      derivativesTone = "gray";
+    }
+  } else {
+    derivativesState = "PENDING";
+    derivativesTone = "gray";
   }
-  setText("marketDerivatives", derivativesSummary);
+  setBadge("marketDerivativesBadge", derivativesState, derivativesTone);
 
-  setText("execPosUsd", `${fmt(brief.position_size?.usdc)} USDC`);
-  setText("execRisk", `${fmt(brief.position_size?.risk_per_trade)} USDC`);
-  setText("execStop", `${fmt(brief.trade?.stop_distance_pct)}%`);
-  setText("execExposureActive", `${fmt(brief.position_size?.exposure_active_pct)}%`);
-  setText("execExposureTotal", `${fmt(brief.position_size?.exposure_total_pct)}%`);
-  setText("execEntry", fmt(brief.trade?.entry));
-  setText("execStopCandidate", fmt(brief.trade?.stop));
+  const levelEventRaw = brief.level_event?.active_event ?? "none";
+  const levelEventLabel = levelEventRaw === "sweep_reclaim" ? "SWEEP" : levelEventRaw === "break" ? "BREAK" : "NONE";
+  const levelEventTone = levelEventRaw === "sweep_reclaim" ? "green" : levelEventRaw === "break" ? "red" : "gray";
+  setBadge("marketLevelEventBadge", levelEventLabel, levelEventTone);
 
-  const status = brief.trade?.active_setup === "NONE" ? "WATCH" : "SETUP ACTIVE";
-  const action = brief.trade?.active_setup === "LONG" ? "LONG ACTIVE" : brief.trade?.active_setup === "SHORT" ? "SHORT ACTIVE" : "WAIT";
-  setText("decisionStatus", `STATUS: ${status}`);
+  const tf = brief.trade?.filters;
+  setFilterChip("filterCost", "cost", Boolean(tf?.cost_pass));
+  setFilterChip("filterVwap", "vwap", Boolean(tf?.vwap_pass));
+  setFilterChip("filterProb", "prob", Boolean(tf?.probability_pass));
+  setFilterChip("filterInversion", "inversion", Boolean(tf?.inversion_pass));
+
+  setText("execPosUsd", hasNumber(brief.position_size?.usdc) ? `${fmt(brief.position_size.usdc)} USDC` : "—");
+  setText("execRisk", hasNumber(brief.position_size?.risk_per_trade) ? `${fmt(brief.position_size.risk_per_trade)} USDC` : "—");
+  setText("execStop", hasNumber(brief.trade?.stop_distance_pct) ? `${fmt(brief.trade.stop_distance_pct)}%` : "waiting trigger");
+  setText("execExposureActive", hasNumber(brief.position_size?.exposure_active_pct) ? `${fmt(brief.position_size.exposure_active_pct)}%` : "—");
+  setText("execExposureTotal", hasNumber(brief.position_size?.exposure_total_pct) ? `${fmt(brief.position_size.exposure_total_pct)}%` : "—");
+  setText("execEntry", hasNumber(brief.trade?.entry) ? fmt(brief.trade.entry) : "pending");
+  setText("execStopCandidate", hasNumber(brief.trade?.stop) ? fmt(brief.trade.stop) : "pending");
+
+  const activeSetup = brief.trade?.active_setup ?? "NONE";
+  const action = deriveCurrentAction(brief, scoreValue);
   setText("decisionAction", action);
   setText("decisionLevel", `Watch level: ${fmt(brief.critical_level)}`);
+  setText("decisionTriggerDistance", `Trigger distance: ${fmtSignedPct(brief.critical_level_distance_pct)}`);
+  applyScenarioHighlight(activeSetup);
 
-  setStatus(status, `${brief.market_bias?.reason ?? "Waiting for data"}`, `Watch ${fmt(brief.critical_level)} for trigger`);
+  let status = "WATCH";
+  if (activeSetup === "LONG" || activeSetup === "SHORT") status = "SETUP ACTIVE";
+  else if (!Boolean(brief.setup_score?.trade_gate) && Number(scoreValue ?? 0) < 6) status = "NO SETUP";
+  setStatus(status, contextReason, `Watch ${fmt(brief.critical_level)} for trigger`);
 
   if (soundEnabled && shouldAlert(brief)) {
     const sig = buildAlertSignature(brief);
@@ -368,7 +433,7 @@ document.getElementById("refreshNow").addEventListener("click", async () => {
   await fetch("/api/refresh", { method: "POST" });
   await refresh();
   const now = new Date();
-  setText("lastUpdate", `Last update: ${now.toISOString().slice(11,16)} UTC`);
+  setText("lastUpdate", `Last update: ${now.toISOString().slice(11, 16)} UTC`);
   setNextRefresh(now);
   btn.textContent = old;
   btn.disabled = false;
@@ -398,4 +463,3 @@ fetchConfig().then((cfg) => {
 });
 
 initSoundToggle();
-
