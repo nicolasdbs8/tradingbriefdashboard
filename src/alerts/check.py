@@ -25,6 +25,7 @@ class AlertDecision:
     reason: str
     signature: str
     payload: Dict[str, Any]
+    why_blocked: list[str]
 
 
 def _fmt_price(value: Optional[float]) -> str:
@@ -40,14 +41,28 @@ def _build_signature(data: Dict[str, Any]) -> str:
     return f"{active_setup}:{active_event}:{score}"
 
 
-def _decision(alert_type: str, favorable: bool, reason: str, data: Dict[str, Any]) -> AlertDecision:
-    return AlertDecision(alert_type=alert_type, favorable=favorable, reason=reason, signature=_build_signature(data), payload=data)
+def _decision(
+    alert_type: str,
+    favorable: bool,
+    reason: str,
+    data: Dict[str, Any],
+    why_blocked: Optional[list[str]] = None,
+) -> AlertDecision:
+    return AlertDecision(
+        alert_type=alert_type,
+        favorable=favorable,
+        reason=reason,
+        signature=_build_signature(data),
+        payload=data,
+        why_blocked=why_blocked or [],
+    )
 
 
 def _evaluate_trigger(data: Dict[str, Any], cfg) -> AlertDecision:
     setup_score = data.get("setup_score", {})
     trade = data.get("trade", {})
     level_event = data.get("level_event", {})
+    trade_filters = trade.get("filters", {})
 
     if not cfg.alerts_enabled:
         return _decision("trigger", False, "alerts disabled", data)
@@ -66,6 +81,14 @@ def _evaluate_trigger(data: Dict[str, Any], cfg) -> AlertDecision:
     active_event = level_event.get("active_event", "none")
     if cfg.alerts_require_active_event and active_event not in cfg.alerts_allowed_active_events:
         return _decision("trigger", False, "active_event not allowed", data)
+    if not trade_filters.get("cost_pass", True):
+        return _decision("trigger", False, "cost_fail", data)
+    if not trade_filters.get("vwap_pass", True):
+        return _decision("trigger", False, "vwap_mismatch", data)
+    if not trade_filters.get("probability_pass", True):
+        return _decision("trigger", False, "probability_below_threshold", data)
+    if not trade_filters.get("inversion_pass", True):
+        return _decision("trigger", False, "inversion_not_confirmed_2bars", data)
 
     return _decision("trigger", True, "favorable", data)
 
@@ -74,6 +97,7 @@ def _evaluate_heads_up(data: Dict[str, Any], cfg) -> AlertDecision:
     setup_score = data.get("setup_score", {})
     trade = data.get("trade", {})
     level_event = data.get("level_event", {})
+    trade_filters = data.get("trade", {}).get("filters", {})
     liquidity_dist = abs(float(data.get("liquidity_distance", {}).get("min_pct", 9999)))
 
     if not cfg.alerts_heads_up_enabled:
@@ -94,8 +118,19 @@ def _evaluate_heads_up(data: Dict[str, Any], cfg) -> AlertDecision:
         has_event_hint = bool(level_event.get("sweep_detected") or level_event.get("reclaim_confirmed"))
         if not (has_level_hint or has_event_hint):
             return _decision("heads_up", False, "heads-up no confirmation hint", data)
+    why_blocked: list[str] = []
+    if not trade_filters.get("cost_pass", True):
+        why_blocked.append("cost_fail")
+    if not trade_filters.get("vwap_pass", True):
+        why_blocked.append("vwap_mismatch")
+    if not trade_filters.get("probability_pass", True):
+        why_blocked.append("probability_below_threshold")
+    if not trade_filters.get("probability_heads_up_pass", True):
+        why_blocked.append("probability_below_heads_up_threshold")
+    if not trade_filters.get("inversion_pass", True):
+        why_blocked.append("inversion_not_confirmed_2bars")
 
-    return _decision("heads_up", True, "heads-up favorable", data)
+    return _decision("heads_up", True, "heads-up favorable", data, why_blocked=why_blocked)
 
 
 def _evaluate_alert(data: Dict[str, Any], cfg) -> AlertDecision:
@@ -132,9 +167,10 @@ def _cooldown_passed(state: Dict[str, Any], cooldown_minutes: int, alert_type: s
     return (time.time() - last_ts) >= cooldown_minutes * 60
 
 
-def _build_message(data: Dict[str, Any], alert_type: str) -> str:
+def _build_message(data: Dict[str, Any], alert_type: str, why_blocked: Optional[list[str]] = None) -> str:
     setup_score = data.get("setup_score", {})
     trade = data.get("trade", {})
+    trade_filters = trade.get("filters", {})
     level_event = data.get("level_event", {})
     market_bias = data.get("market_bias", {})
     symbol = data.get("symbol", "UNKNOWN")
@@ -172,6 +208,8 @@ def _build_message(data: Dict[str, Any], alert_type: str) -> str:
             f"Setup: {active_setup} | Event: {active_event}",
             f"Score: {score}/10 ({setup_class})",
             f"Gate: {gate_reason}",
+            f"Why blocked: {blocked_note if blocked_note else 'n/a'}",
+            f"Filters: cost={'PASS' if trade_filters.get('cost_pass', True) else 'FAIL'} | vwap={'PASS' if trade_filters.get('vwap_pass', True) else 'FAIL'} | prob={'PASS' if trade_filters.get('probability_pass', True) else 'FAIL'}",
             f"Preset: {preset}",
             f"Bias: {bias}",
             f"Entry: {entry}",
@@ -214,7 +252,7 @@ def run_check(config_path: str, state_path: str, dry_run: bool, force: bool) -> 
     message_alert_type = decision.alert_type
     if force and not decision.favorable:
         message_alert_type = "force_test"
-    message = _build_message(data, message_alert_type)
+    message = _build_message(data, message_alert_type, decision.why_blocked)
     token = os.getenv("TELEGRAM_BOT_TOKEN", "")
     chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
 
@@ -251,3 +289,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+    blocked_note = ", ".join(why_blocked or [])

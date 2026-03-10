@@ -52,6 +52,13 @@ class BriefReport:
     costs: ExecutionCostAssumptions
     max_cost_to_stop_ratio: float
     min_rr_net: float
+    cost_gate_enabled: bool
+    vwap_gate_enabled: bool
+    probability_gate_enabled: bool
+    probability_gate_trigger_min: float
+    probability_gate_heads_up_min: float
+    level_source_weight_enabled: bool
+    level_source_weights: Dict[str, float]
     liquidity_gate_enabled: bool
     liquidity_gate_max_distance_pct: float
     probability_engine_enabled: bool
@@ -142,6 +149,31 @@ def _liquidity_distance_for_event(
     if active_event == "break":
         return above_pct, "above"
     return min(below_pct, above_pct), "nearest"
+
+
+def _level_source_bonus(level_source: str, enabled: bool, weights: Dict[str, float]) -> float:
+    if not enabled:
+        return 0.0
+    return float(weights.get(level_source, 0.0))
+
+
+def _vwap_pass(active_event: str, vwap_side: str, enabled: bool) -> bool:
+    if not enabled:
+        return True
+    if active_event == "sweep_reclaim":
+        return vwap_side == "above"
+    if active_event == "break":
+        return vwap_side == "below"
+    return True
+
+
+def _probability_pass(probability: Optional[dict], min_threshold: float, enabled: bool) -> tuple[bool, float]:
+    if not enabled:
+        return True, 0.0
+    if not probability:
+        return True, 0.0
+    prob_max = max(probability.get("long_probability_pct", 0.0), probability.get("short_probability_pct", 0.0))
+    return prob_max >= min_threshold, prob_max
 
 
 def _vol_state(volume: float, volume_sma: float) -> str:
@@ -478,8 +510,10 @@ def format_brief(report: BriefReport) -> str:
         liquidity_score = 2
     momentum_score = 2 if (h1.rsi > 60 or h1.rsi < 40) and vol_state == "strong" else 1 if (h1.rsi > 55 or h1.rsi < 45) else 0
     volatility_score = 2 if atr_trend == "up" else 1 if atr_trend == "flat" else 0
+    level_source = str(report.triggers.get("critical_level_source", "1h"))
+    level_source_bonus = _level_source_bonus(level_source, report.level_source_weight_enabled, report.level_source_weights)
     total_score = trend_score + location_score + liquidity_score + momentum_score + volatility_score
-    final_score = total_score
+    final_score = float(total_score)
     active_event = report.triggers.get("active_event", "none")
     if location_score == 0:
         final_score = min(final_score, 6)
@@ -487,6 +521,7 @@ def format_brief(report: BriefReport) -> str:
         final_score = min(final_score, 6)
     if trend_score == 0 and active_event != "sweep_reclaim":
         final_score = min(final_score, 5)
+    final_score = min(final_score + level_source_bonus, 10.0)
 
     if final_score <= 5:
         setup_class = "IGNORE"
@@ -497,17 +532,71 @@ def format_brief(report: BriefReport) -> str:
     else:
         setup_class = "PRIORITY"
 
-    prob_max = 0.0
-    if probability:
-        prob_max = max(probability["long_probability_pct"], probability["short_probability_pct"])
+    liquidity_below_pct = _distance_pct_abs(h1.price, range_low_1h)
+    liquidity_above_pct = _distance_pct_abs(range_high_1h, h1.price)
+    liquidity_asymmetry = "bearish" if liquidity_below_pct < liquidity_above_pct else "bullish" if liquidity_above_pct < liquidity_below_pct else "balanced"
+    liquidity_event_dist_pct, liquidity_event_side = _liquidity_distance_for_event(
+        active_event,
+        liquidity_below_pct,
+        liquidity_above_pct,
+    )
+    cost_pass, cost_reason = passes_cost_filter(
+        stop_distance_rate,
+        rr_net,
+        report.costs,
+        report.max_cost_to_stop_ratio,
+        report.min_rr_net,
+    )
+    probability_pass, prob_max = _probability_pass(
+        probability,
+        report.probability_gate_trigger_min,
+        report.probability_gate_enabled,
+    )
+    probability_heads_up_pass = (
+        (not report.probability_gate_enabled)
+        or prob_max == 0.0
+        or prob_max >= report.probability_gate_heads_up_min
+    )
+    vwap_pass = _vwap_pass(active_event, vwap_side, report.vwap_gate_enabled)
+    liquidity_gate_pass = (
+        (not report.liquidity_gate_enabled)
+        or liquidity_event_dist_pct <= report.liquidity_gate_max_distance_pct
+    )
+    long_inversion_confirmed = bool(report.triggers.get("long_inversion_confirmed", True))
+    short_inversion_confirmed = bool(report.triggers.get("short_inversion_confirmed", True))
+    inversion_pass = (
+        (active_event != "sweep_reclaim" or long_inversion_confirmed)
+        and (active_event != "break" or short_inversion_confirmed)
+    )
+    cost_gate_pass = (not report.cost_gate_enabled) or cost_pass
     trade_gate = False
     trade_gate_reason = "setup_score below threshold"
+    trade_gate_failures: list[str] = []
     if final_score >= 6:
         if location_score >= 1 and liquidity_score >= 1 and (trend_score >= 1 or prob_max >= 55):
             trade_gate = True
             trade_gate_reason = "passed location/liquidity and trend/probability checks"
         else:
             trade_gate_reason = "failed location/liquidity or trend/probability checks"
+    if trade_gate and not cost_gate_pass:
+        trade_gate = False
+        trade_gate_failures.append("cost_fail")
+    if trade_gate and not vwap_pass:
+        trade_gate = False
+        trade_gate_failures.append("vwap_mismatch")
+    if trade_gate and not probability_pass:
+        trade_gate = False
+        trade_gate_failures.append("probability_below_threshold")
+    if trade_gate and not liquidity_gate_pass:
+        trade_gate = False
+        trade_gate_failures.append("liquidity_too_far")
+    if trade_gate and not inversion_pass:
+        trade_gate = False
+        trade_gate_failures.append("inversion_not_confirmed_2bars")
+    if trade_gate_failures:
+        trade_gate_reason = "; ".join(trade_gate_failures)
+    elif trade_gate and level_source_bonus > 0:
+        trade_gate_reason = f"{trade_gate_reason}; level_source_bonus={level_source_bonus:,.1f} ({level_source})"
 
     active_setup = "NONE"
     if active_event == "sweep_reclaim":
@@ -542,19 +631,7 @@ def format_brief(report: BriefReport) -> str:
 
     key_level = setup_level
 
-    liquidity_below_pct = _distance_pct_abs(h1.price, range_low_1h)
-    liquidity_above_pct = _distance_pct_abs(range_high_1h, h1.price)
-    liquidity_asymmetry = "bearish" if liquidity_below_pct < liquidity_above_pct else "bullish" if liquidity_above_pct < liquidity_below_pct else "balanced"
-
     bias_reason = f"{'bearish' if daily_direction == 'down' else 'bullish' if daily_direction == 'up' else 'neutral'} pullback zone"
-
-    cost_pass, cost_reason = passes_cost_filter(
-        stop_distance_rate,
-        rr_net,
-        report.costs,
-        report.max_cost_to_stop_ratio,
-        report.min_rr_net,
-    )
 
     tp_plan = compute_tp_plan(entry, stop, trade_side)
     if tp_plan.levels:
@@ -728,6 +805,9 @@ def format_brief(report: BriefReport) -> str:
             f"Effective stop distance: {effective_stop_rate*100:,.3f}%",
             f"Risk if stop hit (net): ~{report.capital.risk_per_trade_usd:,.2f}",
             f"Cost filter: {'PASS' if cost_pass else 'FAIL'} ({cost_reason})",
+            f"VWAP filter: {'PASS' if vwap_pass else 'FAIL'} (side={vwap_side})",
+            f"Probability filter: {'PASS' if probability_pass else 'FAIL'} (max={prob_max:,.1f}%, min={report.probability_gate_trigger_min:,.1f}%)",
+            f"Liquidity gate: {'PASS' if liquidity_gate_pass else 'FAIL'} ({liquidity_event_dist_pct:,.2f}% on {liquidity_event_side})",
             "",
             *tp_lines,
             "",
@@ -770,6 +850,7 @@ def format_brief(report: BriefReport) -> str:
             f"Sweep detected: {'YES' if report.triggers.get('sweep_detected') else 'NO'}",
             f"Reclaim confirmed: {'YES' if report.triggers.get('reclaim_confirmed') else 'NO'}",
             f"Break confirmed: {'YES' if report.triggers.get('break_confirmed') else 'NO'}",
+            f"Inversion confirm ({report.triggers.get('inversion_confirmation_bars', 2)}x15m): LONG={'YES' if report.triggers.get('long_inversion_confirmed') else 'NO'} | SHORT={'YES' if report.triggers.get('short_inversion_confirmed') else 'NO'}",
             f"Active event: {report.triggers.get('active_event', 'none')}",
             "",
             "CRITICAL LEVEL",
@@ -804,6 +885,7 @@ def format_brief(report: BriefReport) -> str:
             f"Liquidity: {liquidity_score}/2",
             f"Momentum: {momentum_score}/2",
             f"Volatility: {volatility_score}/2",
+            f"Level source bonus: {level_source_bonus:,.1f} ({level_source})",
             f"Raw score: {total_score}/10",
             f"Final score: {final_score}/10",
             f"Setup class: {setup_class}",
@@ -834,11 +916,6 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
     liquidity_below_pct = _distance_pct_abs(h1.price, range_low_1h)
     liquidity_above_pct = _distance_pct_abs(range_high_1h, h1.price)
     liquidity_asymmetry = "bearish" if liquidity_below_pct < liquidity_above_pct else "bullish" if liquidity_above_pct < liquidity_below_pct else "balanced"
-    liquidity_event_dist_pct, liquidity_event_side = _liquidity_distance_for_event(
-        active_event,
-        liquidity_below_pct,
-        liquidity_above_pct,
-    )
     target_high, target_low = _select_target_levels(
         report.setup_target_timeframe,
         range_high_1h,
@@ -904,6 +981,13 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
     position_size = size_usd / entry if entry != 0 else 0.0
     rr_net = net_rr(entry, stop, target, report.costs)
     vwap_side = "above" if m15.vwap and m15.price > m15.vwap else "below"
+    cost_pass, cost_reason = passes_cost_filter(
+        stop_distance_rate,
+        rr_net,
+        report.costs,
+        report.max_cost_to_stop_ratio,
+        report.min_rr_net,
+    )
 
     daily_trend = _conclusion(daily.price, daily.ema_fast, daily.ema_slow, daily.rsi)
     h4_trend = _conclusion(h4.price, h4.ema_fast, h4.ema_slow, h4.rsi)
@@ -920,8 +1004,10 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
         liquidity_score = 2
     momentum_score = 2 if (h1.rsi > 60 or h1.rsi < 40) and vol_state == "strong" else 1 if (h1.rsi > 55 or h1.rsi < 45) else 0
     volatility_score = 2 if atr_trend == "up" else 1 if atr_trend == "flat" else 0
+    level_source = str(report.triggers.get("critical_level_source", "1h"))
+    level_source_bonus = _level_source_bonus(level_source, report.level_source_weight_enabled, report.level_source_weights)
     total_score = trend_score + location_score + liquidity_score + momentum_score + volatility_score
-    final_score = total_score
+    final_score = float(total_score)
     active_event = report.triggers.get("active_event", "none")
     liquidity_event_dist_pct, liquidity_event_side = _liquidity_distance_for_event(
         active_event,
@@ -934,6 +1020,7 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
         final_score = min(final_score, 6)
     if trend_score == 0 and active_event != "sweep_reclaim":
         final_score = min(final_score, 5)
+    final_score = min(final_score + level_source_bonus, 10.0)
 
     if final_score <= 5:
         setup_class = "IGNORE"
@@ -971,31 +1058,56 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
             adjustments=report.probability_engine_adjustments,
         )
 
-    prob_max = 0.0
-    if probability:
-        prob_max = max(probability["long_probability_pct"], probability["short_probability_pct"])
+    probability_pass, prob_max = _probability_pass(
+        probability,
+        report.probability_gate_trigger_min,
+        report.probability_gate_enabled,
+    )
+    probability_heads_up_pass = (
+        (not report.probability_gate_enabled)
+        or prob_max == 0.0
+        or prob_max >= report.probability_gate_heads_up_min
+    )
+    vwap_pass = _vwap_pass(active_event, vwap_side, report.vwap_gate_enabled)
+    liquidity_gate_pass = (
+        (not report.liquidity_gate_enabled)
+        or liquidity_event_dist_pct <= report.liquidity_gate_max_distance_pct
+    )
+    long_inversion_confirmed = bool(report.triggers.get("long_inversion_confirmed", True))
+    short_inversion_confirmed = bool(report.triggers.get("short_inversion_confirmed", True))
+    inversion_pass = (
+        (active_event != "sweep_reclaim" or long_inversion_confirmed)
+        and (active_event != "break" or short_inversion_confirmed)
+    )
+    cost_gate_pass = (not report.cost_gate_enabled) or cost_pass
     trade_gate = False
     trade_gate_reason = "setup_score below threshold"
+    trade_gate_failures: list[str] = []
     if final_score >= 6:
         if location_score >= 1 and liquidity_score >= 1 and (trend_score >= 1 or prob_max >= 55):
             trade_gate = True
             trade_gate_reason = "passed location/liquidity and trend/probability checks"
         else:
             trade_gate_reason = "failed location/liquidity or trend/probability checks"
-    if trade_gate and report.liquidity_gate_enabled and liquidity_event_dist_pct > report.liquidity_gate_max_distance_pct:
+    if trade_gate and not cost_gate_pass:
         trade_gate = False
-        trade_gate_reason = (
-            f"liquidity distance too high ({liquidity_event_dist_pct:,.2f}% > "
-            f"{report.liquidity_gate_max_distance_pct:,.2f}%)"
-        )
-    if trade_gate and report.liquidity_gate_enabled and liquidity_event_dist_pct > report.liquidity_gate_max_distance_pct:
+        trade_gate_failures.append("cost_fail")
+    if trade_gate and not vwap_pass:
         trade_gate = False
-        trade_gate_reason = (
-            f"liquidity distance too high ({liquidity_event_dist_pct:,.2f}% > "
-            f"{report.liquidity_gate_max_distance_pct:,.2f}%)"
-        )
-
-    active_event = report.triggers.get("active_event", "none")
+        trade_gate_failures.append("vwap_mismatch")
+    if trade_gate and not probability_pass:
+        trade_gate = False
+        trade_gate_failures.append("probability_below_threshold")
+    if trade_gate and not liquidity_gate_pass:
+        trade_gate = False
+        trade_gate_failures.append("liquidity_too_far")
+    if trade_gate and not inversion_pass:
+        trade_gate = False
+        trade_gate_failures.append("inversion_not_confirmed_2bars")
+    if trade_gate_failures:
+        trade_gate_reason = "; ".join(trade_gate_failures)
+    elif trade_gate and level_source_bonus > 0:
+        trade_gate_reason = f"{trade_gate_reason}; level_source_bonus={level_source_bonus:,.1f} ({level_source})"
     active_setup = "NONE"
     if active_event == "sweep_reclaim":
         active_setup = "LONG"
@@ -1065,6 +1177,14 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
             "class": setup_class,
             "trade_gate": trade_gate,
             "reason": trade_gate_reason,
+            "components": {
+                "trend": trend_score,
+                "location": location_score,
+                "liquidity": liquidity_score,
+                "momentum": momentum_score,
+                "volatility": volatility_score,
+                "level_source_bonus": level_source_bonus,
+            },
         },
         "critical_level": report.triggers.get("critical_level", range_low_1h),
         "critical_level_source": report.triggers.get("critical_level_source", "1h"),
@@ -1106,6 +1226,25 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
             "stop_distance_pct": (exec_stop_distance_rate * 100) if exec_stop_distance_rate is not None else None,
             "active_setup": active_setup,
             "vwap_side": vwap_side,
+            "filters": {
+                "cost_pass": cost_gate_pass,
+                "cost_reason": cost_reason,
+                "vwap_pass": vwap_pass,
+                "probability_pass": probability_pass,
+                "probability_max": prob_max,
+                "probability_min": report.probability_gate_trigger_min,
+                "probability_heads_up_pass": probability_heads_up_pass,
+                "probability_heads_up_min": report.probability_gate_heads_up_min,
+                "level_source_weight": level_source_bonus,
+                "level_source": level_source,
+                "liquidity_gate_pass": liquidity_gate_pass,
+                "liquidity_event_side": liquidity_event_side,
+                "liquidity_event_pct": liquidity_event_dist_pct,
+                "inversion_pass": inversion_pass,
+                "long_inversion_confirmed": long_inversion_confirmed,
+                "short_inversion_confirmed": short_inversion_confirmed,
+                "trade_gate_failures": trade_gate_failures,
+            },
         },
         "level_event": {
             "level": report.triggers.get("critical_level", range_low_1h),
@@ -1113,6 +1252,9 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
             "sweep_detected": report.triggers.get("sweep_detected", False),
             "reclaim_confirmed": report.triggers.get("reclaim_confirmed", False),
             "break_confirmed": report.triggers.get("break_confirmed", False),
+            "inversion_confirmation_bars": report.triggers.get("inversion_confirmation_bars", 2),
+            "long_inversion_confirmed": long_inversion_confirmed,
+            "short_inversion_confirmed": short_inversion_confirmed,
             "active_event": active_event,
         },
         "mini_chart": mini_chart,

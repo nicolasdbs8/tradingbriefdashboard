@@ -292,6 +292,14 @@ def generate_trading_brief(
         elif break_confirmed:
             active_event = "break"
 
+        inversion_bars = max(1, cfg.sweep_inversion_confirmation_bars)
+        long_inversion_confirmed = False
+        short_inversion_confirmed = False
+        if len(df15) >= inversion_bars:
+            recent_closes = df15["close"].tail(inversion_bars).astype(float)
+            long_inversion_confirmed = bool((recent_closes > critical_level).all())
+            short_inversion_confirmed = bool((recent_closes < critical_level).all())
+
         triggers.update(
             {
                 "critical_level": critical_level,
@@ -300,6 +308,9 @@ def generate_trading_brief(
                 "reclaim_confirmed": bool(reclaim),
                 "break_confirmed": bool(break_confirmed),
                 "active_event": active_event,
+                "inversion_confirmation_bars": inversion_bars,
+                "long_inversion_confirmed": long_inversion_confirmed,
+                "short_inversion_confirmed": short_inversion_confirmed,
             }
         )
 
@@ -341,6 +352,13 @@ def generate_trading_brief(
         costs=costs,
         max_cost_to_stop_ratio=cfg.max_cost_to_stop_ratio,
         min_rr_net=cfg.min_rr_net,
+        cost_gate_enabled=cfg.cost_gate_enabled,
+        vwap_gate_enabled=cfg.vwap_gate_enabled,
+        probability_gate_enabled=cfg.probability_gate_enabled,
+        probability_gate_trigger_min=cfg.probability_gate_trigger_min,
+        probability_gate_heads_up_min=cfg.probability_gate_heads_up_min,
+        level_source_weight_enabled=cfg.level_source_weight_enabled,
+        level_source_weights=cfg.level_source_weights,
         liquidity_gate_enabled=cfg.liquidity_gate_enabled,
         liquidity_gate_max_distance_pct=cfg.liquidity_gate_max_distance_pct,
         probability_engine_enabled=cfg.probability_engine_enabled,

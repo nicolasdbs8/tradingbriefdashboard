@@ -116,6 +116,20 @@ execution:
 filters:
   max_cost_to_stop_ratio: 0.35
   min_rr_net: 1.6
+  cost_gate:
+    enabled: true
+  vwap_gate:
+    enabled: true
+  probability_gate:
+    enabled: true
+    trigger_min: 58
+    heads_up_min: 54
+  level_source_weight:
+    enabled: true
+    weights:
+      1d: 1.0
+      4h: 0.5
+      1h: 0.0
   liquidity_gate:
     enabled: true
     max_distance_pct: 0.35
@@ -136,6 +150,7 @@ sweep_detection:
   min_sweep_pct: 0.001
   atr_multiplier: 0.2
   reclaim_confirmation_bars: 1
+  inversion_confirmation_bars: 2
   breakout_volume_multiplier: 1.2
 
 alerts:

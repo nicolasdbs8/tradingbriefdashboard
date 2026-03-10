@@ -41,6 +41,13 @@ class Config:
     fallback_fee_taker: float
     max_cost_to_stop_ratio: float
     min_rr_net: float
+    cost_gate_enabled: bool
+    vwap_gate_enabled: bool
+    probability_gate_enabled: bool
+    probability_gate_trigger_min: float
+    probability_gate_heads_up_min: float
+    level_source_weight_enabled: bool
+    level_source_weights: Dict[str, float]
     liquidity_gate_enabled: bool
     liquidity_gate_max_distance_pct: float
     probability_engine_enabled: bool
@@ -49,6 +56,7 @@ class Config:
     sweep_min_sweep_pct: float
     sweep_atr_multiplier: float
     sweep_reclaim_confirmation_bars: int
+    sweep_inversion_confirmation_bars: int
     sweep_breakout_volume_multiplier: float
     setup_preset_name: str
     setup_entry_mode: str
@@ -88,6 +96,10 @@ def load_config(path: str | Path) -> Config:
     preset_name, preset_cfg = _load_setup_preset(data)
     alerts_cfg = data.get("alerts", {})
     heads_up_cfg = alerts_cfg.get("heads_up", {})
+    filters_cfg = data.get("filters", {})
+    probability_gate_cfg = filters_cfg.get("probability_gate", {})
+    level_source_weight_cfg = filters_cfg.get("level_source_weight", {})
+    level_source_weights = level_source_weight_cfg.get("weights", {})
 
     exchange = os.getenv("DATA_EXCHANGE", data["data"]["exchange"])
     fallback_exchange = os.getenv("DATA_FALLBACK_EXCHANGE", data["data"]["fallback_exchange"])
@@ -125,11 +137,22 @@ def load_config(path: str | Path) -> Config:
         kraken_pair=data["execution"]["kraken_pair"],
         fallback_fee_maker=float(data["execution"]["fallback_fees"]["maker"]),
         fallback_fee_taker=float(data["execution"]["fallback_fees"]["taker"]),
-        max_cost_to_stop_ratio=float(data["filters"]["max_cost_to_stop_ratio"]),
-        min_rr_net=float(data["filters"]["min_rr_net"]),
-        liquidity_gate_enabled=bool(data["filters"].get("liquidity_gate", {}).get("enabled", True)),
+        max_cost_to_stop_ratio=float(filters_cfg["max_cost_to_stop_ratio"]),
+        min_rr_net=float(filters_cfg["min_rr_net"]),
+        cost_gate_enabled=bool(filters_cfg.get("cost_gate", {}).get("enabled", True)),
+        vwap_gate_enabled=bool(filters_cfg.get("vwap_gate", {}).get("enabled", True)),
+        probability_gate_enabled=bool(probability_gate_cfg.get("enabled", True)),
+        probability_gate_trigger_min=float(probability_gate_cfg.get("trigger_min", 58)),
+        probability_gate_heads_up_min=float(probability_gate_cfg.get("heads_up_min", 54)),
+        level_source_weight_enabled=bool(level_source_weight_cfg.get("enabled", True)),
+        level_source_weights={
+            "1d": float(level_source_weights.get("1d", 1.0)),
+            "4h": float(level_source_weights.get("4h", 0.5)),
+            "1h": float(level_source_weights.get("1h", 0.0)),
+        },
+        liquidity_gate_enabled=bool(filters_cfg.get("liquidity_gate", {}).get("enabled", True)),
         liquidity_gate_max_distance_pct=float(
-            data["filters"].get("liquidity_gate", {}).get("max_distance_pct", 0.35)
+            filters_cfg.get("liquidity_gate", {}).get("max_distance_pct", 0.35)
         ),
         probability_engine_enabled=bool(prob_cfg.get("enabled", True)),
         probability_engine_weights={
@@ -146,6 +169,7 @@ def load_config(path: str | Path) -> Config:
         sweep_min_sweep_pct=float(sweep_cfg.get("min_sweep_pct", 0.001)),
         sweep_atr_multiplier=float(sweep_cfg.get("atr_multiplier", 0.2)),
         sweep_reclaim_confirmation_bars=int(sweep_cfg.get("reclaim_confirmation_bars", 1)),
+        sweep_inversion_confirmation_bars=int(sweep_cfg.get("inversion_confirmation_bars", 2)),
         sweep_breakout_volume_multiplier=float(sweep_cfg.get("breakout_volume_multiplier", 1.2)),
         setup_preset_name=str(preset_name),
         setup_entry_mode=str(preset_cfg.get("entry_mode", "retest")),
