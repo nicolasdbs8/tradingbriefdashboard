@@ -1020,6 +1020,9 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
             "bias": market_type,
             "reason": bias_reason,
         },
+        "market_state": {
+            "volatility": atr_trend,
+        },
         "setup_score": {
             "total": total_score,
             "final": final_score,

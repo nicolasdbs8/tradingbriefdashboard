@@ -298,7 +298,7 @@ function render(brief) {
 
   setText("marketContext", `Price context: ${brief.market_bias?.reason ?? "not available"}`);
   setText("marketLiquidity", `Liquidity: ${brief.liquidity_distance?.asymmetry ?? "not available"}`);
-  setText("marketVolatility", "Volatility: not available");
+  setText("marketVolatility", `Volatility: ${brief.market_state?.volatility ?? "not available"}`);
 
   let derivativesSummary = "Derivatives: not available";
   if (brief.derivatives) {
