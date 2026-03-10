@@ -101,7 +101,7 @@ function fmt(n) {
   return Number(n).toFixed(2);
 }
 
-function fmtOr(n, fallback = "--") {
+function fmtOr(n, fallback = "—") {
   return hasNumber(n) ? fmt(n) : fallback;
 }
 
@@ -112,14 +112,14 @@ function fmtPct(n, fallback = "not available") {
   return `${rounded.toFixed(1)}%`;
 }
 
-function fmtSignedPct(n, fallback = "--") {
+function fmtSignedPct(n, fallback = "—") {
   if (!hasNumber(n)) return fallback;
   const rounded = Math.round(Number(n) * 100) / 100;
   const sign = rounded > 0 ? "+" : "";
   return `${sign}${rounded.toFixed(2)}%`;
 }
 
-function fmtLevel(n, fallback = "--") {
+function fmtLevel(n, fallback = "—") {
   if (!hasNumber(n)) return fallback;
   return Number(n).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
@@ -187,25 +187,6 @@ function buildTpRuleText(side, entry, tp1, sizeUsd, estimatedCostPct) {
   return text;
 }
 
-function computeRR(entry, stop, target) {
-  if (!hasNumber(entry) || !hasNumber(stop) || !hasNumber(target)) return null;
-  const risk = Math.abs(Number(entry) - Number(stop));
-  if (risk <= 0) return null;
-  const reward = Math.abs(Number(target) - Number(entry));
-  if (reward < 0) return null;
-  return reward / risk;
-}
-
-function setGateVisualState(gateOpen, reason) {
-  const body = document.body;
-  if (!body) return;
-  body.classList.remove("gate-open", "gate-blocked");
-  body.classList.add(gateOpen ? "gate-open" : "gate-blocked");
-  const gateBadge = document.getElementById("setupGateBadge");
-  if (gateBadge) gateBadge.classList.toggle("xl", !gateOpen);
-  setText("setupGateReason", `Blocked reason: ${gateOpen ? "none" : reason || "pending"}`);
-}
-
 function setNextRefresh(now) {
   const next = new Date(now.getTime() + refreshIntervalSec * 1000);
   setText("nextRefresh", `Next refresh: ${next.toISOString().slice(11, 16)} UTC`);
@@ -225,32 +206,23 @@ function clearScenarioHighlight() {
   });
   ["playbookLong", "playbookShort", "playbookWait"].forEach((id) => {
     const el = document.getElementById(id);
-    if (el) el.classList.remove("active", "dimmed");
+    if (el) el.classList.remove("active");
   });
 }
 
 function applyScenarioHighlight(activeSetup) {
   clearScenarioHighlight();
-  const longLine = document.getElementById("playbookLong");
-  const shortLine = document.getElementById("playbookShort");
-  const waitLine = document.getElementById("playbookWait");
   if (activeSetup === "LONG") {
     document.getElementById("longSetupCard")?.classList.add("active-scenario");
-    longLine?.classList.add("active");
-    shortLine?.classList.add("dimmed");
-    waitLine?.classList.add("dimmed");
+    document.getElementById("playbookLong")?.classList.add("active");
     return;
   }
   if (activeSetup === "SHORT") {
     document.getElementById("shortSetupCard")?.classList.add("active-scenario");
-    shortLine?.classList.add("active");
-    longLine?.classList.add("dimmed");
-    waitLine?.classList.add("dimmed");
+    document.getElementById("playbookShort")?.classList.add("active");
     return;
   }
-  waitLine?.classList.add("active");
-  longLine?.classList.add("dimmed");
-  shortLine?.classList.add("dimmed");
+  document.getElementById("playbookWait")?.classList.add("active");
 }
 
 function deriveCurrentAction(brief, scoreValue) {
@@ -316,26 +288,19 @@ function render(brief) {
   setText("headerPair", `${brief.symbol} | ${brief.exchange}`);
 
   setText("price", fmt(brief.price));
-  const biasReasonRaw = compactContext(brief.market_bias?.reason ?? "pending");
-  const biasMain = biasReasonRaw.toUpperCase();
-  const biasKind = brief.market_bias?.bias ?? "PENDING";
-  setText("marketBias", biasMain);
-  setText("marketBiasSub", `Bias type: ${biasKind}`);
+  setText("marketBias", brief.market_bias?.bias ?? "not computed yet");
+  setText("marketBiasSub", brief.market_bias?.reason ?? "not available");
   setText("criticalLevel", fmt(brief.critical_level));
   setText("criticalLevelDist", `Distance: ${fmtSignedPct(brief.critical_level_distance_pct)}`);
   setText("criticalLevelType", `Trigger type: ${deriveTriggerType(brief.critical_level_distance_pct)}`);
   setText("criticalLevelSource", `Source: ${String(brief.critical_level_source ?? "1h").toUpperCase()}`);
 
-  const hasBear = /bear/i.test(biasReasonRaw);
-  const hasBull = /bull/i.test(biasReasonRaw);
-  const biasBadgeText = hasBear ? "DOWN" : hasBull ? "UP" : biasKind;
-  const biasTone = hasBear ? "red" : hasBull ? "green" : biasKind === "TREND" ? "orange" : "gray";
-  setBadge("biasBadge", biasBadgeText, biasTone);
+  const bias = brief.market_bias?.bias ?? "PENDING";
+  setBadge("biasBadge", bias, bias === "TREND" ? "orange" : "gray");
 
   const scoreValue = brief.setup_score?.final ?? brief.setup_score?.total;
   const setupClass = brief.setup_score?.class ?? brief.setup_score?.quality ?? "pending";
   const gateOpen = brief.setup_score?.trade_gate;
-  const gateReason = brief.setup_score?.reason ?? "pending";
   if (hasNumber(scoreValue)) {
     const fill = document.getElementById("setupScoreFill");
     if (fill) fill.style.width = `${Math.max(0, Math.min(100, (Number(scoreValue) / 10) * 100))}%`;
@@ -351,7 +316,6 @@ function render(brief) {
     setBadge("setupBadge", "PENDING", "gray");
     setBadge("setupGateBadge", "BLOCKED", "red");
   }
-  setGateVisualState(Boolean(gateOpen), gateReason);
 
   if (brief.directional_probability) {
     const prob = brief.directional_probability;
@@ -414,10 +378,6 @@ function render(brief) {
   setText("shortEntry", fmtOr(brief.setups?.short?.entry, "pending"));
   setText("shortStop", fmtOr(brief.setups?.short?.stop, "pending"));
   setText("shortTarget", fmtOr(brief.setups?.short?.target, "pending"));
-  const longRR = computeRR(brief.setups?.long?.entry, brief.setups?.long?.stop, brief.setups?.long?.target);
-  const shortRR = computeRR(brief.setups?.short?.entry, brief.setups?.short?.stop, brief.setups?.short?.target);
-  setText("longRR", hasNumber(longRR) ? longRR.toFixed(2) : "pending");
-  setText("shortRR", hasNumber(shortRR) ? shortRR.toFixed(2) : "pending");
 
   if (brief.tp_plan_long && brief.tp_plan_long.length >= 3) {
     setText("tp1L", `TP1 ${fmt(brief.tp_plan_long[0].price)} (${(brief.tp_plan_long[0].size_pct * 100).toFixed(0)}%)`);
@@ -436,7 +396,7 @@ function render(brief) {
   setText("contextCapitalTotal", `Capital total: ${fmt(brief.capital?.total)}`);
   setText("contextCapitalActive", `Capital active: ${fmt(brief.capital?.active)}`);
 
-  const contextReason = biasReasonRaw;
+  const contextReason = compactContext(brief.market_bias?.reason ?? "pending");
   setText("marketContext", contextReason);
 
   const liquidityRaw = String(brief.liquidity_distance?.asymmetry ?? "pending");
@@ -474,32 +434,17 @@ function render(brief) {
   const levelEvent = deriveLevelEventBadge(brief);
   setBadge("marketLevelEventBadge", levelEvent.label, levelEvent.tone);
 
-  setText("execPosUsd", hasNumber(brief.position_size?.usdc) ? `${fmt(brief.position_size.usdc)} USDC` : "--");
-  setText("execRisk", hasNumber(brief.position_size?.risk_per_trade) ? `${fmt(brief.position_size.risk_per_trade)} USDC` : "--");
-  setText("execExposureActive", hasNumber(brief.position_size?.exposure_active_pct) ? `${fmt(brief.position_size.exposure_active_pct)}%` : "--");
-  setText("execExposureTotal", hasNumber(brief.position_size?.exposure_total_pct) ? `${fmt(brief.position_size.exposure_total_pct)}%` : "--");
+  setText("execPosUsd", hasNumber(brief.position_size?.usdc) ? `${fmt(brief.position_size.usdc)} USDC` : "—");
+  setText("execRisk", hasNumber(brief.position_size?.risk_per_trade) ? `${fmt(brief.position_size.risk_per_trade)} USDC` : "—");
+  setText("execStop", hasNumber(brief.trade?.stop_distance_pct) ? `${fmt(brief.trade.stop_distance_pct)}%` : "waiting trigger");
+  setText("execExposureActive", hasNumber(brief.position_size?.exposure_active_pct) ? `${fmt(brief.position_size.exposure_active_pct)}%` : "—");
+  setText("execExposureTotal", hasNumber(brief.position_size?.exposure_total_pct) ? `${fmt(brief.position_size.exposure_total_pct)}%` : "—");
   const estimatedCostPct =
     brief.trade?.estimated_cost_pct ??
     brief.trade?.cost_pct ??
     brief.trade?.filters?.estimated_cost_pct ??
     brief.trade?.filters?.cost_pct;
   setText("execCost", hasNumber(estimatedCostPct) ? `${fmt(estimatedCostPct)}%` : "pending");
-  const gateIsOpen = Boolean(gateOpen);
-  const stopLine = document.getElementById("execStopLine");
-  const entryLine = document.getElementById("execEntryLine");
-  const stopCandidateLine = document.getElementById("execStopCandidateLine");
-  if (!gateIsOpen) {
-    setText("execStopLabel", "Awaiting trigger");
-    setText("execStop", fmt(brief.critical_level));
-    if (entryLine) entryLine.classList.add("hidden-line");
-    if (stopCandidateLine) stopCandidateLine.classList.add("hidden-line");
-    if (stopLine) stopLine.classList.remove("hidden-line");
-  } else {
-    setText("execStopLabel", "Stop distance");
-    setText("execStop", hasNumber(brief.trade?.stop_distance_pct) ? `${fmt(brief.trade.stop_distance_pct)}%` : "waiting trigger");
-    if (entryLine) entryLine.classList.remove("hidden-line");
-    if (stopCandidateLine) stopCandidateLine.classList.remove("hidden-line");
-  }
   setText(
     "tpRuleL",
     buildTpRuleText(
@@ -604,4 +549,3 @@ fetchConfig().then((cfg) => {
 });
 
 initSoundToggle();
-

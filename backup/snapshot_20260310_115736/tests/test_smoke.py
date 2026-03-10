@@ -8,3 +8,7 @@ def test_imports():
     import src.derivatives.binance_futures  # noqa: F401
     import src.derivatives.bybit_v5  # noqa: F401
     import src.derivatives.interpret  # noqa: F401
+    import src.execution.kraken_costs  # noqa: F401
+    import src.execution.cost_model  # noqa: F401
+    import src.execution.take_profit  # noqa: F401
+    import brief_engine  # noqa: F401

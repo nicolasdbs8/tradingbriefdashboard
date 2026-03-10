@@ -1,0 +1,3 @@
+$env:KRAKEN_API_KEY="9xotd6rpljO2ITyK+VVXByJZG3JdOzK6GS5tNNUB9hEcAREozsowAmo2"
+$env:KRAKEN_API_SECRET="Gt//cx06XZRZ1jngwz4Y16j7Fqh7Tm4jXPrWVT17lEQ/kfHll5+mk2Zf8vG88htnufU9S1An5MukErYzV9OJtg=="
+python server.py

@@ -3,11 +3,11 @@
   <head>
     <meta charset="utf-8" />
     <title>Trading Brief Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css?v=13" />
+    <link rel="stylesheet" href="/static/style.css?v=12" />
     <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
   </head>
   <body>
-    <div class="page" id="pageRoot">
+    <div class="page">
       <header class="header">
         <div class="header-left">
           <div class="title">Trading Brief Dashboard</div>
@@ -59,7 +59,7 @@
           <div class="card-sub" id="criticalLevelType">Trigger type: pending</div>
           <div class="card-sub" id="criticalLevelSource">source not available</div>
         </div>
-        <div class="card snapshot-card informative-card" id="probCard">
+        <div class="card snapshot-card">
           <div class="card-title">DIRECTIONAL PROBABILITY</div>
           <div class="prob-mini">
             <div>
@@ -79,13 +79,12 @@
             <div class="small" id="probEdge">Edge not available</div>
             <div class="small" id="probConfidence">Confidence not available</div>
           </div>
-          <div class="small prob-note" id="probNote">Informative only when trade gate is blocked</div>
           <details class="prob-details">
             <summary>Factor breakdown</summary>
             <ul id="probFactors" class="prob-list"></ul>
           </details>
         </div>
-        <div class="card snapshot-card" id="setupScoreCard">
+        <div class="card snapshot-card">
           <div class="card-title">SETUP SCORE</div>
           <div class="setup-score-main" id="setupScoreValue">not computed</div>
           <div class="score-bar-track">
@@ -99,7 +98,6 @@
             <span class="setup-meta-label">TRADE GATE</span>
             <span class="badge red" id="setupGateBadge">BLOCKED</span>
           </div>
-          <div class="card-sub gate-reason" id="setupGateReason">Blocked reason: pending</div>
         </div>
       </section>
 
@@ -147,12 +145,12 @@
           <div class="card-title">EXECUTION</div>
           <div class="exec-line"><span>Position size</span><span id="execPosUsd">—</span></div>
           <div class="exec-line"><span>Risk per trade</span><span id="execRisk">—</span></div>
-          <div class="exec-line" id="execStopLine"><span id="execStopLabel">Stop distance</span><span id="execStop">waiting trigger</span></div>
+          <div class="exec-line"><span>Stop distance</span><span id="execStop">waiting trigger</span></div>
           <div class="exec-line"><span>Exposure active</span><span id="execExposureActive">—</span></div>
           <div class="exec-line"><span>Exposure total</span><span id="execExposureTotal">—</span></div>
           <div class="exec-line"><span>Estimated cost</span><span id="execCost">pending</span></div>
-          <div class="exec-line" id="execEntryLine"><span id="execEntryLabel">Entry candidate</span><span id="execEntry">pending</span></div>
-          <div class="exec-line" id="execStopCandidateLine"><span id="execStopCandidateLabel">Stop candidate</span><span id="execStopCandidate">pending</span></div>
+          <div class="exec-line"><span>Entry candidate</span><span id="execEntry">pending</span></div>
+          <div class="exec-line"><span>Stop candidate</span><span id="execStopCandidate">pending</span></div>
         </div>
       </section>
 
@@ -175,10 +173,6 @@
             <span class="label">Target</span>
             <span class="value setup-target" id="longTarget">not available</span>
           </div>
-          <div class="setup-line">
-            <span class="label">R/R</span>
-            <span class="value" id="longRR">pending</span>
-          </div>
         </div>
         <div class="card setup-card" id="shortSetupCard">
           <div class="card-title">SHORT SETUP</div>
@@ -197,10 +191,6 @@
           <div class="setup-line">
             <span class="label">Target</span>
             <span class="value setup-target" id="shortTarget">not available</span>
-          </div>
-          <div class="setup-line">
-            <span class="label">R/R</span>
-            <span class="value" id="shortRR">pending</span>
           </div>
         </div>
         <div class="card">
@@ -238,6 +228,6 @@
       </section>
     </div>
 
-    <script src="/static/dashboard.js?v=19"></script>
+    <script src="/static/dashboard.js?v=18"></script>
   </body>
 </html>

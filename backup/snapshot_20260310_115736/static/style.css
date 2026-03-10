@@ -184,11 +184,6 @@ button {
   margin-top: 6px;
 }
 
-.badge.xl {
-  font-size: 12px;
-  padding: 6px 12px;
-}
-
 .badge.green {
   background: rgba(15, 42, 30, 0.9);
   color: #86efac;
@@ -279,11 +274,6 @@ button {
   color: #cbd5e1;
 }
 
-.prob-note {
-  display: none;
-  margin-top: 6px;
-}
-
 .prob-list {
   list-style: none;
   padding: 6px 0 0;
@@ -305,11 +295,6 @@ button {
   justify-content: space-between;
   align-items: center;
   margin-top: 8px;
-}
-
-.gate-reason {
-  margin-top: 8px;
-  color: #f6c6c6;
 }
 
 .setup-meta-label {
@@ -462,21 +447,12 @@ button {
   font-weight: 700;
 }
 
-.playbook-line.dimmed {
-  opacity: 0.45;
-  background: rgba(12, 16, 21, 0.18);
-}
-
 .exec-line {
   display: flex;
   justify-content: space-between;
   font-size: 13px;
   padding: 4px 0;
   border-bottom: 1px dashed rgba(255, 255, 255, 0.06);
-}
-
-.hidden-line {
-  display: none;
 }
 
 .exec-line:last-child {
@@ -529,31 +505,6 @@ button {
   border-color: rgba(97, 165, 255, 0.82);
   background: linear-gradient(165deg, rgba(97, 165, 255, 0.16), rgba(23, 31, 42, 0.98));
   box-shadow: 0 12px 32px rgba(24, 81, 154, 0.32);
-}
-
-body.gate-blocked #setupScoreCard {
-  border-color: rgba(239, 68, 68, 0.82);
-  background: linear-gradient(165deg, rgba(99, 17, 17, 0.35), rgba(23, 31, 42, 0.98));
-  box-shadow: 0 14px 36px rgba(125, 25, 25, 0.35);
-}
-
-body.gate-blocked #setupGateBadge {
-  font-size: 12px;
-  padding: 6px 12px;
-  letter-spacing: 0.1em;
-}
-
-body.gate-blocked #probCard {
-  opacity: 0.55;
-  filter: saturate(0.75);
-}
-
-body.gate-blocked #probNote {
-  display: block;
-}
-
-body.gate-open #setupScoreCard {
-  border-color: rgba(34, 197, 94, 0.45);
 }
 
 .context-line {
