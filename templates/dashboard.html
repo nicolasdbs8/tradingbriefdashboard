@@ -104,7 +104,7 @@
       </section>
 
       <section class="decision-grid">
-        <div class="card">
+        <div class="card market-state-card">
           <div class="card-title">MARKET STATE</div>
           <div class="state-row">
             <span class="state-key">Context</span>
@@ -143,16 +143,22 @@
           </div>
         </div>
 
-        <div class="card">
+        <div class="card execution-card">
           <div class="card-title">EXECUTION</div>
           <div class="exec-line"><span>Position size</span><span id="execPosUsd">—</span></div>
           <div class="exec-line"><span>Risk per trade</span><span id="execRisk">—</span></div>
           <div class="exec-line" id="execStopLine"><span id="execStopLabel">Stop distance</span><span id="execStop">waiting trigger</span></div>
           <div class="exec-line"><span>Exposure active</span><span id="execExposureActive">—</span></div>
+          <div class="exec-meter"><div class="exec-meter-fill" id="execExposureActiveBar"></div></div>
           <div class="exec-line"><span>Exposure total</span><span id="execExposureTotal">—</span></div>
+          <div class="exec-meter"><div class="exec-meter-fill" id="execExposureTotalBar"></div></div>
           <div class="exec-line"><span>Estimated cost</span><span id="execCost">pending</span></div>
           <div class="exec-line" id="execEntryLine"><span id="execEntryLabel">Entry candidate</span><span id="execEntry">pending</span></div>
           <div class="exec-line" id="execStopCandidateLine"><span id="execStopCandidateLabel">Stop candidate</span><span id="execStopCandidate">pending</span></div>
+        </div>
+        <div class="card mini-chart-card chart-placeholder">
+          <div class="card-title">MINI CHART</div>
+          <div class="chart-box" id="miniChart">Reserved area for future chart</div>
         </div>
       </section>
 
@@ -179,6 +185,13 @@
             <span class="label">R/R</span>
             <span class="value" id="longRR">pending</span>
           </div>
+          <details class="setup-tp-details">
+            <summary>TP plan</summary>
+            <div class="tp-row" id="tp1L">TP1 waiting for data</div>
+            <div class="tp-row" id="tp2L">TP2 waiting for data</div>
+            <div class="tp-row" id="tp3L">TP3 waiting for data</div>
+            <div class="small" id="tpRuleL">Rule: pending</div>
+          </details>
         </div>
         <div class="card setup-card" id="shortSetupCard">
           <div class="card-title">SHORT SETUP</div>
@@ -202,12 +215,16 @@
             <span class="label">R/R</span>
             <span class="value" id="shortRR">pending</span>
           </div>
+          <details class="setup-tp-details">
+            <summary>TP plan</summary>
+            <div class="tp-row" id="tp1S">TP1 waiting for data</div>
+            <div class="tp-row" id="tp2S">TP2 waiting for data</div>
+            <div class="tp-row" id="tp3S">TP3 waiting for data</div>
+            <div class="small" id="tpRuleS">Rule: pending</div>
+          </details>
         </div>
         <div class="card">
           <div class="card-title">CONTEXT</div>
-          <div class="context-section-title">MARKET CONTEXT</div>
-          <div class="context-line" id="contextLiquidity">Liquidity distance: not available</div>
-          <div class="context-line" id="contextDerivatives">Derivatives: not available</div>
           <div class="context-section-title">ACCOUNT</div>
           <div class="context-line" id="contextCapitalTotal">Capital total: not available</div>
           <div class="context-line" id="contextCapitalActive">Capital active: not available</div>
@@ -216,28 +233,8 @@
         </div>
       </section>
 
-      <section class="bottom-row">
-        <div class="card">
-          <div class="card-title">TP PLAN (LONG)</div>
-          <div class="tp-row" id="tp1L">TP1 waiting for data</div>
-          <div class="tp-row" id="tp2L">TP2 waiting for data</div>
-          <div class="tp-row" id="tp3L">TP3 waiting for data</div>
-          <div class="small" id="tpRuleL">Rule: pending</div>
-        </div>
-        <div class="card">
-          <div class="card-title">TP PLAN (SHORT)</div>
-          <div class="tp-row" id="tp1S">TP1 waiting for data</div>
-          <div class="tp-row" id="tp2S">TP2 waiting for data</div>
-          <div class="tp-row" id="tp3S">TP3 waiting for data</div>
-          <div class="small" id="tpRuleS">Rule: pending</div>
-        </div>
-        <div class="card chart-placeholder">
-          <div class="card-title">MINI CHART</div>
-          <div class="chart-box" id="miniChart">Reserved area for future chart</div>
-        </div>
-      </section>
     </div>
 
-    <script src="/static/dashboard.js?v=19"></script>
+    <script src="/static/dashboard.js?v=20"></script>
   </body>
 </html>

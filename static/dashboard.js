@@ -196,6 +196,11 @@ function computeRR(entry, stop, target) {
   return reward / risk;
 }
 
+function clampPct(n) {
+  if (!hasNumber(n)) return 0;
+  return Math.max(0, Math.min(100, Number(n)));
+}
+
 function setGateVisualState(gateOpen, reason) {
   const body = document.body;
   if (!body) return;
@@ -430,9 +435,6 @@ function render(brief) {
     setText("tp3S", `TP3 ${fmt(brief.tp_plan_short[2].price)} (${(brief.tp_plan_short[2].size_pct * 100).toFixed(0)}%)`);
   }
 
-  if (brief.derivatives) setText("contextDerivatives", `Derivatives: ${brief.derivatives.oi_change_24h_pct < 0 ? "deleveraging" : "neutral"}`);
-  else setText("contextDerivatives", "Derivatives: pending");
-  setText("contextLiquidity", `Liquidity distance: ${fmt(brief.liquidity_distance?.below_pct)}% / ${fmt(brief.liquidity_distance?.above_pct)}%`);
   setText("contextCapitalTotal", `Capital total: ${fmt(brief.capital?.total)}`);
   setText("contextCapitalActive", `Capital active: ${fmt(brief.capital?.active)}`);
 
@@ -478,6 +480,10 @@ function render(brief) {
   setText("execRisk", hasNumber(brief.position_size?.risk_per_trade) ? `${fmt(brief.position_size.risk_per_trade)} USDC` : "--");
   setText("execExposureActive", hasNumber(brief.position_size?.exposure_active_pct) ? `${fmt(brief.position_size.exposure_active_pct)}%` : "--");
   setText("execExposureTotal", hasNumber(brief.position_size?.exposure_total_pct) ? `${fmt(brief.position_size.exposure_total_pct)}%` : "--");
+  const activeBar = document.getElementById("execExposureActiveBar");
+  const totalBar = document.getElementById("execExposureTotalBar");
+  if (activeBar) activeBar.style.width = `${clampPct(brief.position_size?.exposure_active_pct)}%`;
+  if (totalBar) totalBar.style.width = `${clampPct(brief.position_size?.exposure_total_pct)}%`;
   const estimatedCostPct =
     brief.trade?.estimated_cost_pct ??
     brief.trade?.cost_pct ??
@@ -552,12 +558,19 @@ function render(brief) {
   const whyList = document.getElementById("whyList");
   if (whyList) {
     whyList.innerHTML = "";
-    why.forEach((w) => {
+    if (!why.length) {
       const chip = document.createElement("div");
       chip.className = "why-chip";
-      chip.textContent = w;
+      chip.textContent = "No strong confluence";
       whyList.appendChild(chip);
-    });
+    } else {
+      why.forEach((w) => {
+        const chip = document.createElement("div");
+        chip.className = "why-chip";
+        chip.textContent = w;
+        whyList.appendChild(chip);
+      });
+    }
   }
 }
 

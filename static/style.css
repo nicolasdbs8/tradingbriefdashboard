@@ -339,8 +339,27 @@ button {
 .decision-grid {
   display: grid;
   grid-template-columns: 1.1fr 1.4fr 1.1fr;
+  grid-template-areas:
+    "market playbook execution"
+    "market playbook chart";
   gap: 12px;
   margin-bottom: 12px;
+}
+
+.market-state-card {
+  grid-area: market;
+}
+
+.playbook-card {
+  grid-area: playbook;
+}
+
+.execution-card {
+  grid-area: execution;
+}
+
+.mini-chart-card {
+  grid-area: chart;
 }
 
 .state-row {
@@ -475,6 +494,22 @@ button {
   border-bottom: 1px dashed rgba(255, 255, 255, 0.06);
 }
 
+.exec-meter {
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #1f2937;
+  border: 1px solid var(--border);
+  margin: 4px 0 8px;
+}
+
+.exec-meter-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #3b82f6, #22c55e);
+  transition: width 0.25s ease;
+}
+
 .hidden-line {
   display: none;
 }
@@ -606,6 +641,16 @@ body.gate-open #setupScoreCard {
   margin: 6px 0;
 }
 
+.setup-tp-details {
+  margin-top: 8px;
+}
+
+.setup-tp-details summary {
+  cursor: pointer;
+  color: #cbd5e1;
+  font-size: 12px;
+}
+
 .chart-placeholder {
   min-height: 180px;
 }
@@ -646,6 +691,11 @@ body.gate-open #setupScoreCard {
 
   .decision-grid {
     grid-template-columns: 1fr;
+    grid-template-areas:
+      "market"
+      "playbook"
+      "execution"
+      "chart";
   }
 
   .secondary-row,
