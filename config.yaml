@@ -116,6 +116,9 @@ execution:
 filters:
   max_cost_to_stop_ratio: 0.35
   min_rr_net: 1.6
+  liquidity_gate:
+    enabled: true
+    max_distance_pct: 0.35
 
 probability_engine:
   enabled: true

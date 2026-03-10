@@ -41,6 +41,8 @@ class Config:
     fallback_fee_taker: float
     max_cost_to_stop_ratio: float
     min_rr_net: float
+    liquidity_gate_enabled: bool
+    liquidity_gate_max_distance_pct: float
     probability_engine_enabled: bool
     probability_engine_weights: Dict[str, float]
     probability_engine_adjustments: Dict[str, float]
@@ -125,6 +127,10 @@ def load_config(path: str | Path) -> Config:
         fallback_fee_taker=float(data["execution"]["fallback_fees"]["taker"]),
         max_cost_to_stop_ratio=float(data["filters"]["max_cost_to_stop_ratio"]),
         min_rr_net=float(data["filters"]["min_rr_net"]),
+        liquidity_gate_enabled=bool(data["filters"].get("liquidity_gate", {}).get("enabled", True)),
+        liquidity_gate_max_distance_pct=float(
+            data["filters"].get("liquidity_gate", {}).get("max_distance_pct", 0.35)
+        ),
         probability_engine_enabled=bool(prob_cfg.get("enabled", True)),
         probability_engine_weights={
             "htf_trend": float(prob_weights.get("htf_trend", 0)),

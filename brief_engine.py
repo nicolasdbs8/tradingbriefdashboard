@@ -341,6 +341,8 @@ def generate_trading_brief(
         costs=costs,
         max_cost_to_stop_ratio=cfg.max_cost_to_stop_ratio,
         min_rr_net=cfg.min_rr_net,
+        liquidity_gate_enabled=cfg.liquidity_gate_enabled,
+        liquidity_gate_max_distance_pct=cfg.liquidity_gate_max_distance_pct,
         probability_engine_enabled=cfg.probability_engine_enabled,
         probability_engine_weights=cfg.probability_engine_weights,
         probability_engine_adjustments=cfg.probability_engine_adjustments,

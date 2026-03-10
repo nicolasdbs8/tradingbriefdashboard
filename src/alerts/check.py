@@ -74,7 +74,7 @@ def _evaluate_heads_up(data: Dict[str, Any], cfg) -> AlertDecision:
     setup_score = data.get("setup_score", {})
     trade = data.get("trade", {})
     level_event = data.get("level_event", {})
-    critical_dist = abs(float(data.get("critical_level_distance_pct", 9999)))
+    liquidity_dist = abs(float(data.get("liquidity_distance", {}).get("min_pct", 9999)))
 
     if not cfg.alerts_heads_up_enabled:
         return _decision("heads_up", False, "heads-up disabled", data)
@@ -90,7 +90,7 @@ def _evaluate_heads_up(data: Dict[str, Any], cfg) -> AlertDecision:
         return _decision("heads_up", False, "heads-up already active setup", data)
 
     if cfg.alerts_heads_up_require_signal_hint:
-        has_level_hint = critical_dist <= cfg.alerts_heads_up_max_distance_pct
+        has_level_hint = liquidity_dist <= cfg.alerts_heads_up_max_distance_pct
         has_event_hint = bool(level_event.get("sweep_detected") or level_event.get("reclaim_confirmed"))
         if not (has_level_hint or has_event_hint):
             return _decision("heads_up", False, "heads-up no confirmation hint", data)

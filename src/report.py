@@ -52,6 +52,8 @@ class BriefReport:
     costs: ExecutionCostAssumptions
     max_cost_to_stop_ratio: float
     min_rr_net: float
+    liquidity_gate_enabled: bool
+    liquidity_gate_max_distance_pct: float
     probability_engine_enabled: bool
     probability_engine_weights: Dict[str, float]
     probability_engine_adjustments: Dict[str, float]
@@ -128,6 +130,18 @@ def _cap_tp_levels(levels: list[TakeProfitLevel], target: float, side: str) -> l
             price = target
         capped.append(TakeProfitLevel(price=price, size_pct=lvl.size_pct, r_multiple=lvl.r_multiple))
     return capped
+
+
+def _liquidity_distance_for_event(
+    active_event: str,
+    below_pct: float,
+    above_pct: float,
+) -> Tuple[float, str]:
+    if active_event == "sweep_reclaim":
+        return below_pct, "below"
+    if active_event == "break":
+        return above_pct, "above"
+    return min(below_pct, above_pct), "nearest"
 
 
 def _vol_state(volume: float, volume_sma: float) -> str:
@@ -820,6 +834,11 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
     liquidity_below_pct = _distance_pct_abs(h1.price, range_low_1h)
     liquidity_above_pct = _distance_pct_abs(range_high_1h, h1.price)
     liquidity_asymmetry = "bearish" if liquidity_below_pct < liquidity_above_pct else "bullish" if liquidity_above_pct < liquidity_below_pct else "balanced"
+    liquidity_event_dist_pct, liquidity_event_side = _liquidity_distance_for_event(
+        active_event,
+        liquidity_below_pct,
+        liquidity_above_pct,
+    )
     target_high, target_low = _select_target_levels(
         report.setup_target_timeframe,
         range_high_1h,
@@ -904,6 +923,11 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
     total_score = trend_score + location_score + liquidity_score + momentum_score + volatility_score
     final_score = total_score
     active_event = report.triggers.get("active_event", "none")
+    liquidity_event_dist_pct, liquidity_event_side = _liquidity_distance_for_event(
+        active_event,
+        liquidity_below_pct,
+        liquidity_above_pct,
+    )
     if location_score == 0:
         final_score = min(final_score, 6)
     if liquidity_score == 0:
@@ -958,6 +982,18 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
             trade_gate_reason = "passed location/liquidity and trend/probability checks"
         else:
             trade_gate_reason = "failed location/liquidity or trend/probability checks"
+    if trade_gate and report.liquidity_gate_enabled and liquidity_event_dist_pct > report.liquidity_gate_max_distance_pct:
+        trade_gate = False
+        trade_gate_reason = (
+            f"liquidity distance too high ({liquidity_event_dist_pct:,.2f}% > "
+            f"{report.liquidity_gate_max_distance_pct:,.2f}%)"
+        )
+    if trade_gate and report.liquidity_gate_enabled and liquidity_event_dist_pct > report.liquidity_gate_max_distance_pct:
+        trade_gate = False
+        trade_gate_reason = (
+            f"liquidity distance too high ({liquidity_event_dist_pct:,.2f}% > "
+            f"{report.liquidity_gate_max_distance_pct:,.2f}%)"
+        )
 
     active_event = report.triggers.get("active_event", "none")
     active_setup = "NONE"
@@ -1039,6 +1075,9 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
             "below_pct": liquidity_below_pct,
             "above_pct": liquidity_above_pct,
             "asymmetry": liquidity_asymmetry,
+            "min_pct": min(liquidity_below_pct, liquidity_above_pct),
+            "event_side": liquidity_event_side,
+            "event_side_pct": liquidity_event_dist_pct,
         },
         "position_size": {
             "usdc": size_usd,
