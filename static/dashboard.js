@@ -173,16 +173,16 @@ function buildStatusActionLine(status, currentAction, criticalLevel) {
 
 function buildTpRuleText(side, entry, tp1, sizeUsd, estimatedCostPct) {
   if (!hasNumber(entry) || !tp1 || !hasNumber(tp1.price) || !hasNumber(tp1.size_pct) || !hasNumber(sizeUsd) || sizeUsd <= 0) {
-    return "Rule: pending";
+    return "Rule: TP plan pending";
   }
   const sign = side === "SHORT" ? -1 : 1;
   const movePct = ((sign * (Number(tp1.price) - Number(entry))) / Number(entry)) * 100;
   const closedNotional = Number(sizeUsd) * Number(tp1.size_pct);
   const grossLocked = closedNotional * (Math.abs(movePct) / 100);
-  let text = `Rule: after TP1 (${fmt(tp1.price)}), move stop to BE ${fmt(entry)} | locked gross +${fmt(grossLocked)} USDC`;
+  let text = `Rule: TP1 ${fmt(tp1.price)} (${(Number(tp1.size_pct) * 100).toFixed(0)}%) -> SL BE ${fmt(entry)} | Lock +${fmt(grossLocked)} USDC`;
   if (hasNumber(estimatedCostPct)) {
     const netApprox = Math.max(0, grossLocked - closedNotional * (Number(estimatedCostPct) / 100));
-    text += ` | net approx +${fmt(netApprox)} USDC`;
+    text += ` | Net~ +${fmt(netApprox)} USDC`;
   }
   return text;
 }
@@ -323,7 +323,6 @@ function render(brief) {
     const shortPct = Number(prob.short_probability_pct ?? Math.max(0, 100 - longPct));
     setText("probLong", fmtPct(longPct));
     setText("probShort", fmtPct(shortPct));
-    setText("probRatio", `${fmtPct(longPct, "0%")} LONG  |  ${fmtPct(shortPct, "0%")} SHORT`);
     setText("probEdge", `Edge ${prob.edge ?? "not available"}`);
     setText("probConfidence", `Confidence ${prob.confidence ?? "not available"}`);
     const longBar = document.getElementById("probBarLong");
@@ -344,7 +343,6 @@ function render(brief) {
   } else {
     setText("probLong", "not available");
     setText("probShort", "not available");
-    setText("probRatio", "LONG 0%  |  SHORT 0%");
     setText("probEdge", "Edge not available");
     setText("probConfidence", "Confidence not available");
     const longBar = document.getElementById("probBarLong");

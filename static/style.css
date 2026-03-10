@@ -235,14 +235,6 @@ button {
   color: #fca5a5;
 }
 
-.prob-ratio {
-  text-align: center;
-  font-size: 11px;
-  color: #cbd5e1;
-  letter-spacing: 0.08em;
-  margin: 4px 0 6px;
-}
-
 .prob-bar {
   display: flex;
   height: 8px;
