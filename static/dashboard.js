@@ -171,6 +171,22 @@ function buildStatusActionLine(status, currentAction, criticalLevel) {
   return "wait";
 }
 
+function buildTpRuleText(side, entry, tp1, sizeUsd, estimatedCostPct) {
+  if (!hasNumber(entry) || !tp1 || !hasNumber(tp1.price) || !hasNumber(tp1.size_pct) || !hasNumber(sizeUsd) || sizeUsd <= 0) {
+    return "Rule: pending";
+  }
+  const sign = side === "SHORT" ? -1 : 1;
+  const movePct = ((sign * (Number(tp1.price) - Number(entry))) / Number(entry)) * 100;
+  const closedNotional = Number(sizeUsd) * Number(tp1.size_pct);
+  const grossLocked = closedNotional * (Math.abs(movePct) / 100);
+  let text = `Rule: after TP1 (${fmt(tp1.price)}), move stop to BE ${fmt(entry)} | locked gross +${fmt(grossLocked)} USDC`;
+  if (hasNumber(estimatedCostPct)) {
+    const netApprox = Math.max(0, grossLocked - closedNotional * (Number(estimatedCostPct) / 100));
+    text += ` | net approx +${fmt(netApprox)} USDC`;
+  }
+  return text;
+}
+
 function setNextRefresh(now) {
   const next = new Date(now.getTime() + refreshIntervalSec * 1000);
   setText("nextRefresh", `Next refresh: ${next.toISOString().slice(11, 16)} UTC`);
@@ -431,6 +447,26 @@ function render(brief) {
     brief.trade?.filters?.estimated_cost_pct ??
     brief.trade?.filters?.cost_pct;
   setText("execCost", hasNumber(estimatedCostPct) ? `${fmt(estimatedCostPct)}%` : "pending");
+  setText(
+    "tpRuleL",
+    buildTpRuleText(
+      "LONG",
+      brief.setups?.long?.entry,
+      brief.tp_plan_long?.[0],
+      brief.position_size?.usdc,
+      estimatedCostPct
+    )
+  );
+  setText(
+    "tpRuleS",
+    buildTpRuleText(
+      "SHORT",
+      brief.setups?.short?.entry,
+      brief.tp_plan_short?.[0],
+      brief.position_size?.usdc,
+      estimatedCostPct
+    )
+  );
   setText("execEntry", hasNumber(brief.trade?.entry) ? fmt(brief.trade.entry) : "pending");
   setText("execStopCandidate", hasNumber(brief.trade?.stop) ? fmt(brief.trade.stop) : "pending");
 
