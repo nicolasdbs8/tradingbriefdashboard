@@ -139,6 +139,32 @@ def _cap_tp_levels(levels: list[TakeProfitLevel], target: float, side: str) -> l
     return capped
 
 
+def _fit_tp_levels_to_target(
+    entry: float,
+    target: float,
+    side: str,
+    levels: list[TakeProfitLevel],
+) -> list[TakeProfitLevel]:
+    if not levels:
+        return levels
+    sign = 1.0 if side == "LONG" else -1.0
+    target_dist = sign * (target - entry)
+    if target_dist <= 0:
+        return levels
+    max_dist = sign * (levels[-1].price - entry)
+    if max_dist <= 0 or target_dist >= max_dist:
+        return levels
+    scale = target_dist / max_dist
+    fitted: list[TakeProfitLevel] = []
+    for idx, lvl in enumerate(levels):
+        base_dist = sign * (lvl.price - entry)
+        new_price = entry + sign * (base_dist * scale)
+        if idx == len(levels) - 1:
+            new_price = target
+        fitted.append(TakeProfitLevel(price=new_price, size_pct=lvl.size_pct, r_multiple=lvl.r_multiple))
+    return fitted
+
+
 def _liquidity_distance_for_event(
     active_event: str,
     below_pct: float,
@@ -635,12 +661,15 @@ def format_brief(report: BriefReport) -> str:
 
     tp_plan = compute_tp_plan(entry, stop, trade_side)
     if tp_plan.levels:
+        tp_plan.levels = _fit_tp_levels_to_target(entry, target, trade_side, tp_plan.levels)
         tp_plan.levels = _cap_tp_levels(tp_plan.levels, target, trade_side)
     tp_plan_long = compute_tp_plan(long_entry, long_stop, "LONG")
     if tp_plan_long.levels:
+        tp_plan_long.levels = _fit_tp_levels_to_target(long_entry, long_target, "LONG", tp_plan_long.levels)
         tp_plan_long.levels = _cap_tp_levels(tp_plan_long.levels, long_target, "LONG")
     tp_plan_short = compute_tp_plan(short_entry, short_stop, "SHORT")
     if tp_plan_short.levels:
+        tp_plan_short.levels = _fit_tp_levels_to_target(short_entry, short_target, "SHORT", tp_plan_short.levels)
         tp_plan_short.levels = _cap_tp_levels(tp_plan_short.levels, short_target, "SHORT")
     tp_lines: list[str] = []
     if tp_plan.levels:
@@ -1033,12 +1062,15 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
 
     tp_plan = compute_tp_plan(entry, stop, trade_side)
     if tp_plan.levels:
+        tp_plan.levels = _fit_tp_levels_to_target(entry, target, trade_side, tp_plan.levels)
         tp_plan.levels = _cap_tp_levels(tp_plan.levels, target, trade_side)
     tp_plan_long = compute_tp_plan(long_entry, long_stop, "LONG")
     if tp_plan_long.levels:
+        tp_plan_long.levels = _fit_tp_levels_to_target(long_entry, long_target, "LONG", tp_plan_long.levels)
         tp_plan_long.levels = _cap_tp_levels(tp_plan_long.levels, long_target, "LONG")
     tp_plan_short = compute_tp_plan(short_entry, short_stop, "SHORT")
     if tp_plan_short.levels:
+        tp_plan_short.levels = _fit_tp_levels_to_target(short_entry, short_target, "SHORT", tp_plan_short.levels)
         tp_plan_short.levels = _cap_tp_levels(tp_plan_short.levels, short_target, "SHORT")
 
     probability = None
