@@ -101,6 +101,11 @@ function fmt(n) {
   return Number(n).toFixed(2);
 }
 
+function fmtUsdc(n, fallback = "pending") {
+  if (!hasNumber(n)) return fallback;
+  return `${fmt(n)} USDC`;
+}
+
 function fmtOr(n, fallback = "--") {
   return hasNumber(n) ? fmt(n) : fallback;
 }
@@ -167,7 +172,7 @@ function buildStatusActionLine(status, currentAction, criticalLevel) {
   if (status === "SETUP ACTIVE" && currentAction === "SHORT ACTIVE") return "execute SHORT plan";
   if (status === "AVOID") return "avoid entries until conditions improve";
   if (status === "NO SETUP") return "stand by, no setup active";
-  if (currentAction === "WATCH") return `wait for trigger at ${fmtLevel(criticalLevel)}`;
+  if (currentAction === "WATCH") return `wait for trigger at ${fmtLevel(criticalLevel)} USDC`;
   return "wait";
 }
 
@@ -179,7 +184,7 @@ function buildTpRuleText(side, entry, tp1, sizeUsd, estimatedCostPct) {
   const movePct = ((sign * (Number(tp1.price) - Number(entry))) / Number(entry)) * 100;
   const closedNotional = Number(sizeUsd) * Number(tp1.size_pct);
   const grossLocked = closedNotional * (Math.abs(movePct) / 100);
-  let text = `Rule: TP1 ${fmt(tp1.price)} (${(Number(tp1.size_pct) * 100).toFixed(0)}%) -> SL BE ${fmt(entry)} | Lock +${fmt(grossLocked)} USDC`;
+  let text = `Rule: TP1 ${fmtUsdc(tp1.price)} (${(Number(tp1.size_pct) * 100).toFixed(0)}%) -> SL BE ${fmtUsdc(entry)} | Lock +${fmt(grossLocked)} USDC`;
   if (hasNumber(estimatedCostPct)) {
     const netApprox = Math.max(0, grossLocked - closedNotional * (Number(estimatedCostPct) / 100));
     text += ` | Net~ +${fmt(netApprox)} USDC`;
@@ -208,7 +213,49 @@ function setGateVisualState(gateOpen, reason) {
   body.classList.add(gateOpen ? "gate-open" : "gate-blocked");
   const gateBadge = document.getElementById("setupGateBadge");
   if (gateBadge) gateBadge.classList.toggle("xl", !gateOpen);
-  setText("setupGateReason", `Blocked reason: ${gateOpen ? "none" : reason || "pending"}`);
+  setText("setupGateReason", `Blocked reason: ${gateOpen ? "none" : humanizeBlockedReason(reason)}`);
+}
+
+function humanizeBlockedReason(reason) {
+  if (!reason) return "pending";
+  const txt = String(reason).trim();
+  const map = {
+    cost_fail: "Costs too high vs stop distance",
+    vwap_mismatch: "VWAP condition not met",
+    probability_below_threshold: "Directional probability below threshold",
+    probability_below_heads_up_threshold: "Heads-up probability below threshold",
+    liquidity_too_far: "Price too far from trigger zone",
+    inversion_not_confirmed_2bars: "Inversion not confirmed (2 bars)",
+    setup_score_below_threshold: "Setup score below threshold",
+    no_active_setup: "No active setup",
+    no_active_event: "No active level event",
+  };
+  if (map[txt]) return map[txt];
+  const parts = txt.split(";").map((part) => map[part.trim()] || part.trim());
+  return parts.join(" | ");
+}
+
+function syncTpDetails(gateOpen, activeSetup) {
+  const longDetails = document.getElementById("longTpDetails");
+  const shortDetails = document.getElementById("shortTpDetails");
+  if (!longDetails || !shortDetails) return;
+  if (!gateOpen) {
+    longDetails.open = false;
+    shortDetails.open = false;
+    return;
+  }
+  if (activeSetup === "LONG") {
+    longDetails.open = true;
+    shortDetails.open = false;
+    return;
+  }
+  if (activeSetup === "SHORT") {
+    longDetails.open = false;
+    shortDetails.open = true;
+    return;
+  }
+  longDetails.open = false;
+  shortDetails.open = false;
 }
 
 function setNextRefresh(now) {
@@ -320,13 +367,13 @@ function render(brief) {
   setNextRefresh(now);
   setText("headerPair", `${brief.symbol} | ${brief.exchange}`);
 
-  setText("price", fmt(brief.price));
+  setText("price", fmtUsdc(brief.price, "waiting for data"));
   const biasReasonRaw = compactContext(brief.market_bias?.reason ?? "pending");
   const biasMain = biasReasonRaw.toUpperCase();
   const biasKind = brief.market_bias?.bias ?? "PENDING";
   setText("marketBias", biasMain);
   setText("marketBiasSub", `Bias type: ${biasKind}`);
-  setText("criticalLevel", fmt(brief.critical_level));
+  setText("criticalLevel", fmtUsdc(brief.critical_level, "not available"));
   setText("criticalLevelDist", `Distance: ${fmtSignedPct(brief.critical_level_distance_pct)}`);
   setText("criticalLevelType", `Trigger type: ${deriveTriggerType(brief.critical_level_distance_pct)}`);
   setText("criticalLevelSource", `Source: ${String(brief.critical_level_source ?? "1h").toUpperCase()}`);
@@ -412,31 +459,31 @@ function render(brief) {
   setText("playbookLong", "Sweep + reclaim -> LONG");
   setText("playbookShort", "Break below -> SHORT continuation");
   setText("longCondition", brief.setups?.long?.condition ?? "pending");
-  setText("longEntry", fmtOr(brief.setups?.long?.entry, "pending"));
-  setText("longStop", fmtOr(brief.setups?.long?.stop, "pending"));
-  setText("longTarget", fmtOr(brief.setups?.long?.target, "pending"));
+  setText("longEntry", fmtUsdc(brief.setups?.long?.entry, "pending"));
+  setText("longStop", fmtUsdc(brief.setups?.long?.stop, "pending"));
+  setText("longTarget", fmtUsdc(brief.setups?.long?.target, "pending"));
   setText("shortCondition", brief.setups?.short?.condition ?? "pending");
-  setText("shortEntry", fmtOr(brief.setups?.short?.entry, "pending"));
-  setText("shortStop", fmtOr(brief.setups?.short?.stop, "pending"));
-  setText("shortTarget", fmtOr(brief.setups?.short?.target, "pending"));
+  setText("shortEntry", fmtUsdc(brief.setups?.short?.entry, "pending"));
+  setText("shortStop", fmtUsdc(brief.setups?.short?.stop, "pending"));
+  setText("shortTarget", fmtUsdc(brief.setups?.short?.target, "pending"));
   const longRR = computeRR(brief.setups?.long?.entry, brief.setups?.long?.stop, brief.setups?.long?.target);
   const shortRR = computeRR(brief.setups?.short?.entry, brief.setups?.short?.stop, brief.setups?.short?.target);
   setText("longRR", hasNumber(longRR) ? longRR.toFixed(2) : "pending");
   setText("shortRR", hasNumber(shortRR) ? shortRR.toFixed(2) : "pending");
 
   if (brief.tp_plan_long && brief.tp_plan_long.length >= 3) {
-    setText("tp1L", `TP1 ${fmt(brief.tp_plan_long[0].price)} (${(brief.tp_plan_long[0].size_pct * 100).toFixed(0)}%)`);
-    setText("tp2L", `TP2 ${fmt(brief.tp_plan_long[1].price)} (${(brief.tp_plan_long[1].size_pct * 100).toFixed(0)}%)`);
-    setText("tp3L", `TP3 ${fmt(brief.tp_plan_long[2].price)} (${(brief.tp_plan_long[2].size_pct * 100).toFixed(0)}%)`);
+    setText("tp1L", `TP1 ${fmtUsdc(brief.tp_plan_long[0].price)} (${(brief.tp_plan_long[0].size_pct * 100).toFixed(0)}%)`);
+    setText("tp2L", `TP2 ${fmtUsdc(brief.tp_plan_long[1].price)} (${(brief.tp_plan_long[1].size_pct * 100).toFixed(0)}%)`);
+    setText("tp3L", `TP3 ${fmtUsdc(brief.tp_plan_long[2].price)} (${(brief.tp_plan_long[2].size_pct * 100).toFixed(0)}%)`);
   }
   if (brief.tp_plan_short && brief.tp_plan_short.length >= 3) {
-    setText("tp1S", `TP1 ${fmt(brief.tp_plan_short[0].price)} (${(brief.tp_plan_short[0].size_pct * 100).toFixed(0)}%)`);
-    setText("tp2S", `TP2 ${fmt(brief.tp_plan_short[1].price)} (${(brief.tp_plan_short[1].size_pct * 100).toFixed(0)}%)`);
-    setText("tp3S", `TP3 ${fmt(brief.tp_plan_short[2].price)} (${(brief.tp_plan_short[2].size_pct * 100).toFixed(0)}%)`);
+    setText("tp1S", `TP1 ${fmtUsdc(brief.tp_plan_short[0].price)} (${(brief.tp_plan_short[0].size_pct * 100).toFixed(0)}%)`);
+    setText("tp2S", `TP2 ${fmtUsdc(brief.tp_plan_short[1].price)} (${(brief.tp_plan_short[1].size_pct * 100).toFixed(0)}%)`);
+    setText("tp3S", `TP3 ${fmtUsdc(brief.tp_plan_short[2].price)} (${(brief.tp_plan_short[2].size_pct * 100).toFixed(0)}%)`);
   }
 
-  setText("contextCapitalTotal", `Capital total: ${fmt(brief.capital?.total)}`);
-  setText("contextCapitalActive", `Capital active: ${fmt(brief.capital?.active)}`);
+  setText("contextCapitalTotal", `Capital total: ${fmtUsdc(brief.capital?.total, "not available")}`);
+  setText("contextCapitalActive", `Capital active: ${fmtUsdc(brief.capital?.active, "not available")}`);
 
   const contextReason = biasReasonRaw;
   setText("marketContext", contextReason);
@@ -496,7 +543,7 @@ function render(brief) {
   const stopCandidateLine = document.getElementById("execStopCandidateLine");
   if (!gateIsOpen) {
     setText("execStopLabel", "Awaiting trigger");
-    setText("execStop", fmt(brief.critical_level));
+    setText("execStop", fmtUsdc(brief.critical_level, "pending"));
     if (entryLine) entryLine.classList.add("hidden-line");
     if (stopCandidateLine) stopCandidateLine.classList.add("hidden-line");
     if (stopLine) stopLine.classList.remove("hidden-line");
@@ -526,13 +573,14 @@ function render(brief) {
       estimatedCostPct
     )
   );
-  setText("execEntry", hasNumber(brief.trade?.entry) ? fmt(brief.trade.entry) : "pending");
-  setText("execStopCandidate", hasNumber(brief.trade?.stop) ? fmt(brief.trade.stop) : "pending");
+  setText("execEntry", hasNumber(brief.trade?.entry) ? fmtUsdc(brief.trade.entry) : "pending");
+  setText("execStopCandidate", hasNumber(brief.trade?.stop) ? fmtUsdc(brief.trade.stop) : "pending");
 
   const activeSetup = brief.trade?.active_setup ?? "NONE";
   const action = deriveCurrentAction(brief, scoreValue);
+  syncTpDetails(Boolean(gateOpen), activeSetup);
   setText("decisionAction", action);
-  setText("decisionLevel", `Watch level: ${fmt(brief.critical_level)}`);
+  setText("decisionLevel", `Watch level: ${fmtUsdc(brief.critical_level, "not available")}`);
   setText("decisionTriggerDistanceValue", fmtSignedPct(brief.critical_level_distance_pct));
   applyScenarioHighlight(activeSetup);
 

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <title>Trading Brief Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css?v=13" />
+    <link rel="stylesheet" href="/static/style.css?v=14" />
     <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
   </head>
   <body>
@@ -31,13 +31,19 @@
         </div>
       </header>
 
-      <section class="status-bar status-watch" id="statusBar">
-        <div class="status-top">
-          <div class="status-label">STATUS</div>
-          <div class="badge gray status-badge" id="statusBadge">WATCH</div>
-        </div>
-        <div class="status-text" id="statusText">Context: waiting for data</div>
-        <div class="status-sub" id="statusSub">Action: pending</div>
+      <section class="status-chart-row">
+        <section class="status-bar status-watch" id="statusBar">
+          <div class="status-top">
+            <div class="status-label">STATUS</div>
+            <div class="badge gray status-badge" id="statusBadge">WATCH</div>
+          </div>
+          <div class="status-text" id="statusText">Context: waiting for data</div>
+          <div class="status-sub" id="statusSub">Action: pending</div>
+        </section>
+        <section class="card mini-chart-top">
+          <div class="card-title">MINI CHART</div>
+          <div class="chart-box top-chart-box" id="miniChart">Reserved area for future chart</div>
+        </section>
       </section>
 
       <section class="snapshot-row">
@@ -104,7 +110,7 @@
       </section>
 
       <section class="decision-grid">
-        <div class="card market-state-card">
+        <div class="card market-state-card compact-card">
           <div class="card-title">MARKET STATE</div>
           <div class="state-row">
             <span class="state-key">Context</span>
@@ -128,7 +134,7 @@
           </div>
         </div>
 
-        <div class="card playbook-card">
+        <div class="card playbook-card compact-card">
           <div class="card-title">PLAYBOOK</div>
           <div class="decision-current">Current action: <span id="decisionAction">WAIT</span></div>
           <div class="decision-level" id="decisionLevel">Watch level: not available</div>
@@ -143,7 +149,7 @@
           </div>
         </div>
 
-        <div class="card execution-card">
+        <div class="card execution-card compact-card">
           <div class="card-title">EXECUTION</div>
           <div class="exec-line"><span>Position size</span><span id="execPosUsd">—</span></div>
           <div class="exec-line"><span>Risk per trade</span><span id="execRisk">—</span></div>
@@ -155,10 +161,11 @@
           <div class="exec-line"><span>Estimated cost</span><span id="execCost">pending</span></div>
           <div class="exec-line" id="execEntryLine"><span id="execEntryLabel">Entry candidate</span><span id="execEntry">pending</span></div>
           <div class="exec-line" id="execStopCandidateLine"><span id="execStopCandidateLabel">Stop candidate</span><span id="execStopCandidate">pending</span></div>
-        </div>
-        <div class="card mini-chart-card chart-placeholder">
-          <div class="card-title">MINI CHART</div>
-          <div class="chart-box" id="miniChart">Reserved area for future chart</div>
+          <div class="exec-section-title">ACCOUNT</div>
+          <div class="context-line" id="contextCapitalTotal">Capital total: not available</div>
+          <div class="context-line" id="contextCapitalActive">Capital active: not available</div>
+          <div class="exec-section-title">WHY</div>
+          <div id="whyList" class="why-chips"></div>
         </div>
       </section>
 
@@ -185,7 +192,7 @@
             <span class="label">R/R</span>
             <span class="value" id="longRR">pending</span>
           </div>
-          <details class="setup-tp-details">
+          <details class="setup-tp-details" id="longTpDetails">
             <summary>TP plan</summary>
             <div class="tp-row" id="tp1L">TP1 waiting for data</div>
             <div class="tp-row" id="tp2L">TP2 waiting for data</div>
@@ -215,21 +222,13 @@
             <span class="label">R/R</span>
             <span class="value" id="shortRR">pending</span>
           </div>
-          <details class="setup-tp-details">
+          <details class="setup-tp-details" id="shortTpDetails">
             <summary>TP plan</summary>
             <div class="tp-row" id="tp1S">TP1 waiting for data</div>
             <div class="tp-row" id="tp2S">TP2 waiting for data</div>
             <div class="tp-row" id="tp3S">TP3 waiting for data</div>
             <div class="small" id="tpRuleS">Rule: pending</div>
           </details>
-        </div>
-        <div class="card">
-          <div class="card-title">CONTEXT</div>
-          <div class="context-section-title">ACCOUNT</div>
-          <div class="context-line" id="contextCapitalTotal">Capital total: not available</div>
-          <div class="context-line" id="contextCapitalActive">Capital active: not available</div>
-          <div class="context-why-title">Why</div>
-          <div id="whyList" class="why-chips"></div>
         </div>
       </section>
 

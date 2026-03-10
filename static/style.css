@@ -74,12 +74,23 @@ button {
 }
 
 .status-bar {
-  margin: 10px 0 12px;
+  margin: 0;
   padding: 14px 18px;
   border-radius: 12px;
   border: 1px solid var(--border);
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.02), rgba(18, 25, 35, 0.9));
   box-shadow: 0 10px 30px var(--shadow);
+}
+
+.status-chart-row {
+  display: grid;
+  grid-template-columns: minmax(560px, 1.55fr) minmax(300px, 1fr);
+  gap: 12px;
+  margin: 10px 0 12px;
+}
+
+.mini-chart-top {
+  padding: 12px 14px;
 }
 
 .status-label {
@@ -111,22 +122,48 @@ button {
 
 .status-badge {
   margin-top: 0;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 14px;
+  letter-spacing: 0.1em;
+  border-width: 1px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06) inset;
 }
 
 .status-watch {
   border-left: 6px solid var(--orange);
 }
+.status-watch .status-badge {
+  background: rgba(57, 39, 12, 0.95);
+  color: #fdba74;
+  border-color: rgba(245, 158, 11, 0.55);
+}
 
 .status-active {
   border-left: 6px solid var(--green);
+}
+.status-active .status-badge {
+  background: rgba(10, 45, 28, 0.95);
+  color: #86efac;
+  border-color: rgba(34, 197, 94, 0.6);
 }
 
 .status-avoid {
   border-left: 6px solid var(--red);
 }
+.status-avoid .status-badge {
+  background: rgba(54, 15, 15, 0.95);
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.6);
+}
 
 .status-none {
   border-left: 6px solid var(--gray);
+}
+.status-none .status-badge {
+  background: rgba(29, 36, 47, 0.95);
+  color: #d1d5db;
+  border-color: rgba(107, 114, 128, 0.55);
 }
 
 .card {
@@ -339,9 +376,7 @@ button {
 .decision-grid {
   display: grid;
   grid-template-columns: 1.1fr 1.4fr 1.1fr;
-  grid-template-areas:
-    "market playbook execution"
-    "market playbook chart";
+  grid-template-areas: "market playbook execution";
   gap: 12px;
   margin-bottom: 12px;
 }
@@ -358,16 +393,28 @@ button {
   grid-area: execution;
 }
 
-.mini-chart-card {
-  grid-area: chart;
-}
-
 .state-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 10px;
   margin: 7px 0;
+}
+
+.compact-card {
+  padding: 10px 12px;
+}
+
+.compact-card .card-title {
+  margin-bottom: 6px;
+}
+
+.compact-card .playbook-line {
+  padding: 6px 8px;
+}
+
+.compact-card .exec-line {
+  padding: 3px 0;
 }
 
 .state-key {
@@ -520,7 +567,7 @@ button {
 
 .secondary-row {
   display: grid;
-  grid-template-columns: repeat(3, minmax(220px, 1fr));
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
   gap: 12px;
   margin-bottom: 12px;
 }
@@ -597,6 +644,14 @@ body.gate-open #setupScoreCard {
   margin: 6px 0;
 }
 
+.exec-section-title {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .context-section-title {
   margin-top: 8px;
   font-size: 11px;
@@ -668,6 +723,11 @@ body.gate-open #setupScoreCard {
   font-size: 13px;
 }
 
+.top-chart-box {
+  height: 108px;
+  margin-top: 8px;
+}
+
 .event-yes {
   color: var(--orange);
 }
@@ -694,8 +754,11 @@ body.gate-open #setupScoreCard {
     grid-template-areas:
       "market"
       "playbook"
-      "execution"
-      "chart";
+      "execution";
+  }
+
+  .status-chart-row {
+    grid-template-columns: 1fr;
   }
 
   .secondary-row,

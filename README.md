@@ -197,3 +197,12 @@ python -m pytest -q
 
 This tool is an analysis assistant, not financial advice.
 You remain responsible for all trading decisions and risk.
+
+## 12) Git update and push
+
+```bash
+git status
+git add .
+git commit -m "Update project"
+git push
+```
