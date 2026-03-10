@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <title>Trading Brief Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css?v=20" />
+    <link rel="stylesheet" href="/static/style.css?v=22" />
     <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
   </head>
   <body>
@@ -40,13 +40,13 @@
           <div class="scanner-kpis">
             <div class="scanner-kpi"><span>Universe</span><strong id="scanUniverse">0</strong></div>
             <div class="scanner-kpi"><span>Open gates</span><strong id="scanOpenGates">0</strong></div>
-            <div class="scanner-kpi"><span>Near trigger</span><strong id="scanNearTrigger">0</strong></div>
+            <div class="scanner-kpi"><span>Interesting</span><strong id="scanInteresting">0</strong></div>
             <div class="scanner-kpi"><span>Active</span><strong id="scanActiveSetups">0</strong></div>
           </div>
           <div class="scanner-filters">
             <button type="button" class="scan-filter active" data-filter="all">All</button>
+            <button type="button" class="scan-filter" data-filter="interesting">Interesting</button>
             <button type="button" class="scan-filter" data-filter="open">Gate Open</button>
-            <button type="button" class="scan-filter" data-filter="near">Near Trigger</button>
           </div>
           <div class="scanner-list" id="scannerList"></div>
         </aside>
@@ -114,6 +114,7 @@
         </div>
         <div class="card snapshot-card" id="setupScoreCard">
           <div class="card-title">SETUP SCORE</div>
+          <div class="card-sub setup-score-mode">Engine score (full calc)</div>
           <div class="setup-score-main" id="setupScoreValue">not computed</div>
           <div class="score-bar-track">
             <div class="score-bar-fill" id="setupScoreFill"></div>
@@ -260,6 +261,6 @@
 
     </div>
 
-    <script src="/static/dashboard.js?v=26"></script>
+    <script src="/static/dashboard.js?v=28"></script>
   </body>
 </html>

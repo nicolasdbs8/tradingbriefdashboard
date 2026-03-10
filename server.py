@@ -35,6 +35,8 @@ FALLBACK_UNIVERSE = [
     "PEPE/USDC", "SHIB/USDC", "JUP/USDC", "TIA/USDC", "WIF/USDC",
 ]
 STABLES = {"USDT", "USDC", "FDUSD", "TUSD", "DAI", "BUSD", "USDP"}
+FIAT_BASES = {"EUR", "USD", "GBP", "TRY", "BRL", "AUD", "RUB", "UAH", "NGN", "PLN", "CZK"}
+EXCLUDED_BASES = {"USD1", "USDE", "USDL", "EURC"}
 LEVERAGED_SUFFIXES = ("UP", "DOWN", "BULL", "BEAR")
 
 app = FastAPI()
@@ -154,7 +156,14 @@ def _fetch_universe_symbols(top_x: int = DEFAULT_TOP_X) -> List[str]:
         base = str(market.get("base") or "").upper()
         if quote not in {"USDC", "USDT"}:
             continue
-        if not base or base in STABLES or _is_leveraged_token(base):
+        if (
+            not base
+            or len(base) < 2
+            or base in STABLES
+            or base in FIAT_BASES
+            or base in EXCLUDED_BASES
+            or _is_leveraged_token(base)
+        ):
             continue
         if _is_too_new(market):
             continue
@@ -186,25 +195,39 @@ def _fetch_universe_symbols(top_x: int = DEFAULT_TOP_X) -> List[str]:
 
 
 def _quick_score(volume_usd: float, change_pct: Optional[float], spread_pct: Optional[float]) -> float:
-    score = 0.0
+    score10 = 0.0
     if volume_usd >= 1_000_000_000:
-        score += 4.0
+        score10 += 4.0
     elif volume_usd >= 300_000_000:
-        score += 3.0
+        score10 += 3.0
     elif volume_usd >= 100_000_000:
-        score += 2.0
+        score10 += 2.0
     elif volume_usd >= 50_000_000:
-        score += 1.0
+        score10 += 1.0
     if change_pct is not None:
-        score += min(4.0, abs(change_pct) / 2.0)
+        score10 += min(4.0, abs(change_pct) / 2.0)
     if spread_pct is not None:
         if spread_pct <= 0.03:
-            score += 2.0
+            score10 += 2.0
         elif spread_pct <= 0.06:
-            score += 1.2
+            score10 += 1.2
         elif spread_pct <= 0.1:
-            score += 0.6
-    return round(max(0.0, min(10.0, score)), 1)
+            score10 += 0.6
+    return round(max(0.0, min(10.0, score10)) * 10, 0)
+
+
+def _opportunity_label(opportunity_score: float, change_pct: Optional[float], spread_pct: Optional[float]) -> str:
+    if spread_pct is not None and spread_pct > 0.12:
+        return "LOW QUALITY"
+    if opportunity_score >= 70:
+        if change_pct is not None and change_pct >= 2.0:
+            return "POTENTIAL BREAKOUT"
+        if change_pct is not None and change_pct <= -2.0:
+            return "POTENTIAL REVERSAL"
+        return "HOT"
+    if opportunity_score >= 50:
+        return "SETUP WATCH"
+    return "IGNORE"
 
 
 def _refresh_scanner_fast(force: bool = False) -> None:
@@ -242,23 +265,38 @@ def _refresh_scanner_fast(force: bool = False) -> None:
             change_pct = None
         volume_usd = _ticker_quote_volume_usd(ticker)
         spread_pct = _ticker_spread_pct(ticker)
-        score = _quick_score(volume_usd, change_pct, spread_pct)
-        action = "WATCH" if (change_pct is not None and abs(change_pct) >= 1.0) else "WAIT"
+        opportunity_score = _quick_score(volume_usd, change_pct, spread_pct)
+        label = _opportunity_label(opportunity_score, change_pct, spread_pct)
+        action = "WATCH" if label in {"HOT", "SETUP WATCH", "POTENTIAL BREAKOUT", "POTENTIAL REVERSAL"} else "WAIT"
+        high = ticker.get("high")
+        low = ticker.get("low")
+        range_pos_pct = None
+        try:
+            high_f = float(high) if high is not None else None
+            low_f = float(low) if low is not None else None
+            if high_f is not None and low_f is not None and price is not None and high_f > low_f:
+                range_pos_pct = ((price - low_f) / (high_f - low_f)) * 100
+        except (TypeError, ValueError):
+            range_pos_pct = None
         rows[symbol] = {
             "symbol": symbol,
             "status": "FAST",
             "action": action,
             "gate_open": False,
-            "score": score,
+            "score": None,
             "setup_class": "FAST",
             "trigger_distance_pct": None,
             "price": price,
             "updated_at": now,
             "freshness_sec": 0,
             "fast_mode": True,
+            "opportunity_score": opportunity_score,
+            "opportunity_label": label,
+            "interesting": opportunity_score >= 50,
             "change_24h_pct": change_pct,
             "spread_pct": spread_pct,
             "volume_usd": volume_usd,
+            "range_pos_pct": range_pos_pct,
         }
     if not rows and existing:
         return
@@ -342,6 +380,9 @@ def _scanner_row(symbol: str, payload: Optional[dict]) -> dict:
         "action": action,
         "gate_open": bool(brief.get("setup_score", {}).get("trade_gate")),
         "score": brief.get("setup_score", {}).get("final"),
+        "opportunity_score": round(float(brief.get("setup_score", {}).get("final") or 0.0) * 10, 0),
+        "opportunity_label": "SETUP WATCH" if action == "WATCH" else action,
+        "interesting": bool(brief.get("setup_score", {}).get("trade_gate")) or action == "WATCH",
         "setup_class": brief.get("setup_score", {}).get("class", "PENDING"),
         "trigger_distance_pct": brief.get("critical_level_distance_pct"),
         "price": brief.get("price"),
@@ -354,12 +395,13 @@ def _scanner_sort_key(row: dict) -> tuple:
     gate_rank = 0 if row.get("gate_open") else 1
     action = row.get("action")
     action_rank = 0 if action in {"LONG ACTIVE", "SHORT ACTIVE"} else 1 if action == "WATCH" else 2
+    opportunity = float(row.get("opportunity_score") or 0.0)
     score = float(row["score"]) if row.get("score") is not None else -1.0
     dist = row.get("trigger_distance_pct")
     dist_rank = abs(float(dist)) if dist is not None else 999.0
     freshness = row.get("freshness_sec")
     fresh_rank = freshness if freshness is not None else 999999
-    return (gate_rank, action_rank, -score, dist_rank, fresh_rank, row.get("symbol", ""))
+    return (gate_rank, action_rank, -opportunity, -score, dist_rank, fresh_rank, row.get("symbol", ""))
 
 
 def _scanner_summary(rows: list[dict]) -> dict:
@@ -370,11 +412,13 @@ def _scanner_summary(rows: list[dict]) -> dict:
         if row.get("trigger_distance_pct") is not None and abs(float(row["trigger_distance_pct"])) <= 0.35
     )
     active = sum(1 for row in rows if row.get("action") in {"LONG ACTIVE", "SHORT ACTIVE"})
+    interesting = sum(1 for row in rows if row.get("interesting"))
     return {
         "universe_size": len(rows),
         "open_gates": open_gates,
         "near_trigger": near_trigger,
         "active_setups": active,
+        "interesting": interesting,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
 

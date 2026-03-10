@@ -265,8 +265,19 @@ function humanizeBlockedReason(reason) {
     no_active_setup: "No active setup",
     no_active_event: "No active level event",
   };
+  if (txt.startsWith("cost_fail:")) {
+    const detail = txt.slice("cost_fail:".length).trim();
+    return `Costs too high vs stop distance (${detail || "details pending"})`;
+  }
   if (map[txt]) return map[txt];
-  const parts = txt.split(";").map((part) => map[part.trim()] || part.trim());
+  const parts = txt.split(";").map((part) => {
+    const p = part.trim();
+    if (p.startsWith("cost_fail:")) {
+      const detail = p.slice("cost_fail:".length).trim();
+      return `Costs too high vs stop distance (${detail || "details pending"})`;
+    }
+    return map[p] || p;
+  });
   return parts.join(" | ");
 }
 
@@ -340,11 +351,11 @@ function setSelectedSymbol(symbol) {
 }
 
 function applyScannerFilter(rows) {
+  if (scannerFilter === "interesting") {
+    return rows.filter((row) => row.interesting);
+  }
   if (scannerFilter === "open") {
     return rows.filter((row) => row.gate_open);
-  }
-  if (scannerFilter === "near") {
-    return rows.filter((row) => hasNumber(row.trigger_distance_pct) && Math.abs(Number(row.trigger_distance_pct)) <= 0.35);
   }
   return rows;
 }
@@ -353,7 +364,7 @@ function renderScanner(data) {
   const summary = data?.summary || {};
   setText("scanUniverse", String(summary.universe_size ?? 0));
   setText("scanOpenGates", String(summary.open_gates ?? 0));
-  setText("scanNearTrigger", String(summary.near_trigger ?? 0));
+  setText("scanInteresting", String(summary.interesting ?? 0));
   setText("scanActiveSetups", String(summary.active_setups ?? 0));
 
   const list = document.getElementById("scannerList");
@@ -383,19 +394,43 @@ function renderScanner(data) {
     top.appendChild(symbol);
     top.appendChild(badge);
 
+    const labelLine = document.createElement("div");
+    labelLine.className = "scanner-tag";
+    labelLine.textContent = row.opportunity_label || (row.fast_mode ? "FAST SCAN" : "DETAILED");
+
     const meta = document.createElement("div");
     meta.className = "scanner-meta";
     const score = document.createElement("span");
     score.className = "scanner-score";
-    score.textContent = hasNumber(row.score) ? `Score ${Number(row.score).toFixed(1)}/10` : "Score pending";
+    if (row.fast_mode) {
+      score.textContent = hasNumber(row.opportunity_score) ? `Opp ${Number(row.opportunity_score).toFixed(0)}/100` : "Opp pending";
+    } else {
+      score.textContent = hasNumber(row.score) ? `Score ${Number(row.score).toFixed(1)}/10` : "Score pending";
+    }
     const dist = document.createElement("span");
-    const isNear = hasNumber(row.trigger_distance_pct) && Math.abs(Number(row.trigger_distance_pct)) <= 0.35;
-    dist.className = `scanner-distance ${isNear ? "near" : "far"}`;
-    dist.textContent = hasNumber(row.trigger_distance_pct) ? fmtSignedPct(row.trigger_distance_pct) : "--";
+    if (row.fast_mode) {
+      const move = hasNumber(row.change_24h_pct) ? Number(row.change_24h_pct) : null;
+      dist.className = `scanner-distance ${hasNumber(move) && move >= 0 ? "near" : "far"}`;
+      dist.textContent = hasNumber(move) ? `${move >= 0 ? "+" : ""}${move.toFixed(2)}%` : "--";
+    } else {
+      const isNear = hasNumber(row.trigger_distance_pct) && Math.abs(Number(row.trigger_distance_pct)) <= 0.35;
+      dist.className = `scanner-distance ${isNear ? "near" : "far"}`;
+      dist.textContent = hasNumber(row.trigger_distance_pct) ? fmtSignedPct(row.trigger_distance_pct) : "--";
+    }
     meta.appendChild(score);
     meta.appendChild(dist);
 
     card.appendChild(top);
+    card.appendChild(labelLine);
+    if (row.fast_mode && hasNumber(row.range_pos_pct)) {
+      const range = document.createElement("div");
+      range.className = "scanner-range";
+      const fill = document.createElement("div");
+      fill.className = "scanner-range-fill";
+      fill.style.width = `${Math.max(0, Math.min(100, Number(row.range_pos_pct)))}%`;
+      range.appendChild(fill);
+      card.appendChild(range);
+    }
     card.appendChild(meta);
     card.addEventListener("click", async () => {
       setSelectedSymbol(row.symbol);

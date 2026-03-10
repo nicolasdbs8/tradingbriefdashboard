@@ -201,12 +201,33 @@ body {
   color: #d3e5f7;
 }
 
+.scanner-tag {
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #b9ccdf;
+}
+
 .scanner-distance.near {
   color: #86efac;
 }
 
 .scanner-distance.far {
   color: #fca5a5;
+}
+
+.scanner-range {
+  height: 5px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.scanner-range-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #22c55e, #3b82f6, #ef4444);
 }
 
 select,
@@ -541,6 +562,14 @@ button {
   font-size: 30px;
   font-weight: 800;
   line-height: 1.05;
+}
+
+.setup-score-mode {
+  margin-top: -2px;
+  margin-bottom: 4px;
+  color: #9fb2c6;
+  font-size: 11px;
+  letter-spacing: 0.03em;
 }
 
 .setup-meta-row {

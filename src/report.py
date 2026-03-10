@@ -606,7 +606,7 @@ def format_brief(report: BriefReport) -> str:
             trade_gate_reason = "failed location/liquidity or trend/probability checks"
     if trade_gate and not cost_gate_pass:
         trade_gate = False
-        trade_gate_failures.append("cost_fail")
+        trade_gate_failures.append(f"cost_fail:{cost_reason}")
     if trade_gate and not vwap_pass:
         trade_gate = False
         trade_gate_failures.append("vwap_mismatch")
