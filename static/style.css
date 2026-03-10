@@ -84,18 +84,33 @@ button {
 
 .status-label {
   font-weight: 700;
-  font-size: 13px;
+  font-size: 11px;
   letter-spacing: 0.08em;
+  color: var(--muted);
 }
 
 .status-text {
-  font-size: 18px;
+  font-size: 14px;
   margin-top: 6px;
+  color: #d3dfeb;
 }
 
 .status-sub {
-  color: var(--muted);
-  font-size: 13px;
+  color: #f2f7fd;
+  font-size: 16px;
+  font-weight: 600;
+  margin-top: 6px;
+}
+
+.status-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.status-badge {
+  margin-top: 0;
 }
 
 .status-watch {
@@ -396,6 +411,28 @@ button {
   color: var(--muted);
 }
 
+.decision-metric {
+  margin-top: 2px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9px;
+  background: rgba(12, 16, 21, 0.3);
+}
+
+.decision-metric-label {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.decision-metric-value {
+  margin-top: 4px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #e6f2ff;
+}
+
 .playbook-lines {
   display: grid;
   gap: 6px;
@@ -411,10 +448,11 @@ button {
 }
 
 .playbook-line.active {
-  border-color: rgba(97, 165, 255, 0.65);
-  background: rgba(97, 165, 255, 0.15);
-  box-shadow: 0 0 0 1px rgba(97, 165, 255, 0.25) inset;
+  border-color: rgba(97, 165, 255, 0.78);
+  background: rgba(97, 165, 255, 0.2);
+  box-shadow: 0 0 0 1px rgba(97, 165, 255, 0.35) inset;
   color: #e7f1ff;
+  font-weight: 700;
 }
 
 .exec-line {
@@ -472,9 +510,9 @@ button {
 }
 
 .setup-card.active-scenario {
-  border-color: rgba(97, 165, 255, 0.7);
-  background: linear-gradient(165deg, rgba(97, 165, 255, 0.1), rgba(23, 31, 42, 0.98));
-  box-shadow: 0 12px 30px rgba(24, 81, 154, 0.25);
+  border-color: rgba(97, 165, 255, 0.82);
+  background: linear-gradient(165deg, rgba(97, 165, 255, 0.16), rgba(23, 31, 42, 0.98));
+  box-shadow: 0 12px 32px rgba(24, 81, 154, 0.32);
 }
 
 .context-line {
@@ -483,11 +521,28 @@ button {
   margin: 6px 0;
 }
 
+.context-section-title {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.context-why-title {
+  margin-top: 10px;
+  font-size: 11px;
+  color: #8193a7;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .why-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 6px;
+  margin-top: 4px;
+  opacity: 0.84;
 }
 
 .why-chip {

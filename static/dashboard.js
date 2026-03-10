@@ -73,14 +73,23 @@ function setStatus(status, text, sub) {
   const bar = document.getElementById("statusBar");
   if (!bar) return;
   bar.classList.remove("status-watch", "status-active", "status-avoid", "status-none");
+  let badgeTone = "gray";
   if (status === "SETUP ACTIVE") bar.classList.add("status-active");
-  else if (status === "AVOID") bar.classList.add("status-avoid");
-  else if (status === "NO SETUP") bar.classList.add("status-none");
-  else bar.classList.add("status-watch");
-  setText("statusText", text);
-  setText("statusSub", sub);
-  const label = bar.querySelector(".status-label");
-  if (label) label.textContent = `STATUS: ${status}`;
+  else if (status === "AVOID") {
+    bar.classList.add("status-avoid");
+    badgeTone = "red";
+  } else if (status === "NO SETUP") {
+    bar.classList.add("status-none");
+  } else {
+    bar.classList.add("status-watch");
+    badgeTone = "orange";
+  }
+  if (status === "SETUP ACTIVE") badgeTone = "green";
+  const context = text && String(text).trim() ? text : "waiting for data";
+  const action = sub && String(sub).trim() ? sub : "pending";
+  setText("statusText", `Context: ${context}`);
+  setText("statusSub", `Action: ${action}`);
+  setBadge("statusBadge", status, badgeTone);
 }
 
 function hasNumber(n) {
@@ -110,6 +119,58 @@ function fmtSignedPct(n, fallback = "—") {
   return `${sign}${rounded.toFixed(2)}%`;
 }
 
+function fmtLevel(n, fallback = "—") {
+  if (!hasNumber(n)) return fallback;
+  return Number(n).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
+function compactContext(reason) {
+  if (!reason) return "pending";
+  return String(reason)
+    .replace(/\bzone\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function deriveTriggerType(distancePct) {
+  if (!hasNumber(distancePct)) return "pending";
+  if (Number(distancePct) > 0) return "Resistance";
+  if (Number(distancePct) < 0) return "Support";
+  return "Neutral";
+}
+
+function deriveLevelEventBadge(brief) {
+  const event = brief.level_event || {};
+  const active = event.active_event || "none";
+  const breakDetected = Boolean(event.break_confirmed || active === "break");
+  const sweepDetected = Boolean(event.sweep_detected || event.reclaim_confirmed || active === "sweep_reclaim");
+
+  if (active === "break" || breakDetected) {
+    const confirmed = Boolean(event.break_confirmed || active === "break");
+    const exploitable = Boolean(brief.setup_score?.trade_gate) && brief.trade?.active_setup === "SHORT";
+    if (confirmed) return { label: "BREAK CONFIRMED", tone: exploitable ? "red" : "orange" };
+    return { label: "BREAK DETECTED", tone: "gray" };
+  }
+
+  if (active === "sweep_reclaim" || sweepDetected) {
+    const confirmed = Boolean(event.reclaim_confirmed || active === "sweep_reclaim");
+    const exploitable = Boolean(brief.setup_score?.trade_gate) && brief.trade?.active_setup === "LONG";
+    if (confirmed) return { label: "SWEEP CONFIRMED", tone: exploitable ? "green" : "orange" };
+    return { label: "SWEEP DETECTED", tone: "gray" };
+  }
+
+  return { label: "NONE", tone: "gray" };
+}
+
+function buildStatusActionLine(status, currentAction, criticalLevel) {
+  if (status === "SETUP ACTIVE" && currentAction === "LONG ACTIVE") return "execute LONG plan";
+  if (status === "SETUP ACTIVE" && currentAction === "SHORT ACTIVE") return "execute SHORT plan";
+  if (status === "AVOID") return "avoid entries until conditions improve";
+  if (status === "NO SETUP") return "stand by, no setup active";
+  if (currentAction === "WATCH") return `wait for trigger at ${fmtLevel(criticalLevel)}`;
+  return "wait";
+}
+
 function setNextRefresh(now) {
   const next = new Date(now.getTime() + refreshIntervalSec * 1000);
   setText("nextRefresh", `Next refresh: ${next.toISOString().slice(11, 16)} UTC`);
@@ -120,13 +181,6 @@ function setBadge(id, label, tone = "gray") {
   if (!el) return;
   el.textContent = label;
   el.className = `badge ${tone}`;
-}
-
-function setFilterChip(id, label, pass) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.className = `filter-chip ${pass ? "pass" : "fail"}`;
-  el.textContent = `${pass ? "✔" : "✘"} ${label}`;
 }
 
 function clearScenarioHighlight() {
@@ -221,8 +275,9 @@ function render(brief) {
   setText("marketBias", brief.market_bias?.bias ?? "not computed yet");
   setText("marketBiasSub", brief.market_bias?.reason ?? "not available");
   setText("criticalLevel", fmt(brief.critical_level));
-  setText("criticalLevelDist", `${fmtSignedPct(brief.critical_level_distance_pct)}`);
-  setText("criticalLevelSource", `Source: ${brief.critical_level_source ?? "1h"}`);
+  setText("criticalLevelDist", `Distance: ${fmtSignedPct(brief.critical_level_distance_pct)}`);
+  setText("criticalLevelType", `Trigger type: ${deriveTriggerType(brief.critical_level_distance_pct)}`);
+  setText("criticalLevelSource", `Source: ${String(brief.critical_level_source ?? "1h").toUpperCase()}`);
 
   const bias = brief.market_bias?.bias ?? "PENDING";
   setBadge("biasBadge", bias, bias === "TREND" ? "orange" : "gray");
@@ -321,15 +376,13 @@ function render(brief) {
     setText("tp3S", `TP3 ${fmt(brief.tp_plan_short[2].price)} (${(brief.tp_plan_short[2].size_pct * 100).toFixed(0)}%)`);
   }
 
-  if (brief.derivatives) {
-    setText("contextDerivatives", `Derivatives: ${brief.derivatives.oi_change_24h_pct < 0 ? "deleveraging" : "neutral"}`);
-  } else {
-    setText("contextDerivatives", "Derivatives: pending");
-  }
+  if (brief.derivatives) setText("contextDerivatives", `Derivatives: ${brief.derivatives.oi_change_24h_pct < 0 ? "deleveraging" : "neutral"}`);
+  else setText("contextDerivatives", "Derivatives: pending");
   setText("contextLiquidity", `Liquidity distance: ${fmt(brief.liquidity_distance?.below_pct)}% / ${fmt(brief.liquidity_distance?.above_pct)}%`);
-  setText("contextCapital", `Capital: ${fmt(brief.capital?.total)} total / ${fmt(brief.capital?.active)} active`);
+  setText("contextCapitalTotal", `Capital total: ${fmt(brief.capital?.total)}`);
+  setText("contextCapitalActive", `Capital active: ${fmt(brief.capital?.active)}`);
 
-  const contextReason = brief.market_bias?.reason ?? "pending";
+  const contextReason = compactContext(brief.market_bias?.reason ?? "pending");
   setText("marketContext", contextReason);
 
   const liquidityRaw = String(brief.liquidity_distance?.asymmetry ?? "pending");
@@ -364,22 +417,20 @@ function render(brief) {
   }
   setBadge("marketDerivativesBadge", derivativesState, derivativesTone);
 
-  const levelEventRaw = brief.level_event?.active_event ?? "none";
-  const levelEventLabel = levelEventRaw === "sweep_reclaim" ? "SWEEP" : levelEventRaw === "break" ? "BREAK" : "NONE";
-  const levelEventTone = levelEventRaw === "sweep_reclaim" ? "green" : levelEventRaw === "break" ? "red" : "gray";
-  setBadge("marketLevelEventBadge", levelEventLabel, levelEventTone);
-
-  const tf = brief.trade?.filters;
-  setFilterChip("filterCost", "cost", Boolean(tf?.cost_pass));
-  setFilterChip("filterVwap", "vwap", Boolean(tf?.vwap_pass));
-  setFilterChip("filterProb", "prob", Boolean(tf?.probability_pass));
-  setFilterChip("filterInversion", "inversion", Boolean(tf?.inversion_pass));
+  const levelEvent = deriveLevelEventBadge(brief);
+  setBadge("marketLevelEventBadge", levelEvent.label, levelEvent.tone);
 
   setText("execPosUsd", hasNumber(brief.position_size?.usdc) ? `${fmt(brief.position_size.usdc)} USDC` : "—");
   setText("execRisk", hasNumber(brief.position_size?.risk_per_trade) ? `${fmt(brief.position_size.risk_per_trade)} USDC` : "—");
   setText("execStop", hasNumber(brief.trade?.stop_distance_pct) ? `${fmt(brief.trade.stop_distance_pct)}%` : "waiting trigger");
   setText("execExposureActive", hasNumber(brief.position_size?.exposure_active_pct) ? `${fmt(brief.position_size.exposure_active_pct)}%` : "—");
   setText("execExposureTotal", hasNumber(brief.position_size?.exposure_total_pct) ? `${fmt(brief.position_size.exposure_total_pct)}%` : "—");
+  const estimatedCostPct =
+    brief.trade?.estimated_cost_pct ??
+    brief.trade?.cost_pct ??
+    brief.trade?.filters?.estimated_cost_pct ??
+    brief.trade?.filters?.cost_pct;
+  setText("execCost", hasNumber(estimatedCostPct) ? `${fmt(estimatedCostPct)}%` : "pending");
   setText("execEntry", hasNumber(brief.trade?.entry) ? fmt(brief.trade.entry) : "pending");
   setText("execStopCandidate", hasNumber(brief.trade?.stop) ? fmt(brief.trade.stop) : "pending");
 
@@ -387,13 +438,14 @@ function render(brief) {
   const action = deriveCurrentAction(brief, scoreValue);
   setText("decisionAction", action);
   setText("decisionLevel", `Watch level: ${fmt(brief.critical_level)}`);
-  setText("decisionTriggerDistance", `Trigger distance: ${fmtSignedPct(brief.critical_level_distance_pct)}`);
+  setText("decisionTriggerDistanceValue", fmtSignedPct(brief.critical_level_distance_pct));
   applyScenarioHighlight(activeSetup);
 
   let status = "WATCH";
   if (activeSetup === "LONG" || activeSetup === "SHORT") status = "SETUP ACTIVE";
   else if (!Boolean(brief.setup_score?.trade_gate) && Number(scoreValue ?? 0) < 6) status = "NO SETUP";
-  setStatus(status, contextReason, `Watch ${fmt(brief.critical_level)} for trigger`);
+  const statusAction = buildStatusActionLine(status, action, brief.critical_level);
+  setStatus(status, contextReason, statusAction);
 
   if (soundEnabled && shouldAlert(brief)) {
     const sig = buildAlertSignature(brief);

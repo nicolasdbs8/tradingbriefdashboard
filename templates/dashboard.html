@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <title>Trading Brief Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css?v=10" />
+    <link rel="stylesheet" href="/static/style.css?v=11" />
     <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
   </head>
   <body>
@@ -32,9 +32,12 @@
       </header>
 
       <section class="status-bar status-watch" id="statusBar">
-        <div class="status-label">STATUS: WATCH</div>
-        <div class="status-text" id="statusText">Waiting for data</div>
-        <div class="status-sub" id="statusSub">No active trigger yet</div>
+        <div class="status-top">
+          <div class="status-label">STATUS</div>
+          <div class="badge gray status-badge" id="statusBadge">WATCH</div>
+        </div>
+        <div class="status-text" id="statusText">Context: waiting for data</div>
+        <div class="status-sub" id="statusSub">Action: pending</div>
       </section>
 
       <section class="snapshot-row">
@@ -52,9 +55,9 @@
         <div class="card snapshot-card">
           <div class="card-title">CRITICAL LEVEL</div>
           <div class="card-value value-xl" id="criticalLevel">not available</div>
-          <div class="card-sub" id="criticalLevelDist">distance not available</div>
+          <div class="card-sub" id="criticalLevelDist">Distance: not available</div>
+          <div class="card-sub" id="criticalLevelType">Trigger type: pending</div>
           <div class="card-sub" id="criticalLevelSource">source not available</div>
-          <div class="card-sub">break -> continuation</div>
         </div>
         <div class="card snapshot-card">
           <div class="card-title">DIRECTIONAL PROBABILITY</div>
@@ -122,22 +125,16 @@
             <span class="state-key">Level event</span>
             <span class="badge gray" id="marketLevelEventBadge">NONE</span>
           </div>
-          <div class="filters-wrap">
-            <div class="state-key">FILTERS</div>
-            <div class="filters-row">
-              <span class="filter-chip fail" id="filterCost">✘ cost</span>
-              <span class="filter-chip fail" id="filterVwap">✘ vwap</span>
-              <span class="filter-chip fail" id="filterProb">✘ prob</span>
-              <span class="filter-chip pass" id="filterInversion">✔ inversion</span>
-            </div>
-          </div>
         </div>
 
         <div class="card playbook-card">
           <div class="card-title">PLAYBOOK</div>
           <div class="decision-current">Current action: <span id="decisionAction">WAIT</span></div>
           <div class="decision-level" id="decisionLevel">Watch level: not available</div>
-          <div class="decision-level" id="decisionTriggerDistance">Trigger distance: —</div>
+          <div class="decision-metric">
+            <div class="decision-metric-label">Trigger distance</div>
+            <div class="decision-metric-value" id="decisionTriggerDistanceValue">—</div>
+          </div>
           <div class="playbook-lines">
             <div class="playbook-line" id="playbookLong">Sweep + reclaim -> LONG</div>
             <div class="playbook-line" id="playbookShort">Break below -> SHORT continuation</div>
@@ -152,6 +149,7 @@
           <div class="exec-line"><span>Stop distance</span><span id="execStop">waiting trigger</span></div>
           <div class="exec-line"><span>Exposure active</span><span id="execExposureActive">—</span></div>
           <div class="exec-line"><span>Exposure total</span><span id="execExposureTotal">—</span></div>
+          <div class="exec-line"><span>Estimated cost</span><span id="execCost">pending</span></div>
           <div class="exec-line"><span>Entry candidate</span><span id="execEntry">pending</span></div>
           <div class="exec-line"><span>Stop candidate</span><span id="execStopCandidate">pending</span></div>
         </div>
@@ -198,10 +196,13 @@
         </div>
         <div class="card">
           <div class="card-title">CONTEXT</div>
+          <div class="context-section-title">MARKET CONTEXT</div>
           <div class="context-line" id="contextLiquidity">Liquidity distance: not available</div>
           <div class="context-line" id="contextDerivatives">Derivatives: not available</div>
-          <div class="context-line" id="contextCapital">Capital: not available</div>
-          <div class="context-line">Why</div>
+          <div class="context-section-title">ACCOUNT</div>
+          <div class="context-line" id="contextCapitalTotal">Capital total: not available</div>
+          <div class="context-line" id="contextCapitalActive">Capital active: not available</div>
+          <div class="context-why-title">Why</div>
           <div id="whyList" class="why-chips"></div>
         </div>
       </section>
@@ -228,6 +229,6 @@
       </section>
     </div>
 
-    <script src="/static/dashboard.js?v=15"></script>
+    <script src="/static/dashboard.js?v=16"></script>
   </body>
 </html>
