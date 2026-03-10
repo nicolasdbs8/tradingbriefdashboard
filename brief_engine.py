@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 import os
 import time
+import json
+from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 import pandas as pd
@@ -29,10 +31,11 @@ from src.report import BriefReport, build_metrics, build_brief_data, format_brie
 
 
 _CACHE: Dict[str, Any] = {
-    "ohlcv": {},  # key: timeframe -> (ts, df)
+    "ohlcv": {},  # key: (symbol, exchange, timeframe) -> (ts, df)
     "kraken_balance": (0.0, 0.0),
     "fees": (0.0, None),
     "derivatives": (0.0, None),
+    "sr_overrides": {"mtime": 0.0, "data": {}},
 }
 
 if load_dotenv:
@@ -93,6 +96,47 @@ def _should_refresh(last_ts: float, min_interval: int) -> bool:
     return time.time() - last_ts >= min_interval
 
 
+def _normalize_symbol(symbol: str) -> str:
+    raw = symbol.strip().upper().replace("-", "/").replace("_", "/")
+    if "/" in raw:
+        return raw
+    for quote in ("USDC", "USDT"):
+        if raw.endswith(quote) and len(raw) > len(quote):
+            return f"{raw[: -len(quote)]}/{quote}"
+    return raw
+
+
+def _load_sr_overrides(path: str = "config/sr_overrides.json") -> Dict[str, Dict[str, list[float]]]:
+    p = Path(path)
+    cache = _CACHE["sr_overrides"]
+    if not p.exists():
+        cache["mtime"] = 0.0
+        cache["data"] = {}
+        return {}
+    mtime = p.stat().st_mtime
+    if cache["data"] and cache["mtime"] == mtime:
+        return cache["data"]
+    try:
+        raw = json.loads(p.read_text(encoding="utf-8"))
+    except Exception as exc:
+        logging.warning("SR overrides parse failed: %s", exc)
+        return cache["data"] or {}
+    normalized: Dict[str, Dict[str, list[float]]] = {}
+    for key, value in raw.items():
+        if not isinstance(value, dict):
+            continue
+        symbol_key = _normalize_symbol(str(key))
+        one_d = value.get("1d") or []
+        four_h = value.get("4h") or []
+        normalized[symbol_key] = {
+            "1d": [float(v) for v in one_d if isinstance(v, (int, float))],
+            "4h": [float(v) for v in four_h if isinstance(v, (int, float))],
+        }
+    cache["mtime"] = mtime
+    cache["data"] = normalized
+    return normalized
+
+
 def _get_cached_ohlcv(
     symbol: str,
     timeframe: str,
@@ -103,7 +147,8 @@ def _get_cached_ohlcv(
     cfg,
 ) -> pd.DataFrame:
     cache = _CACHE["ohlcv"]
-    last_ts, last_df = cache.get(timeframe, (0.0, None))
+    cache_key = (symbol, exchange, timeframe)
+    last_ts, last_df = cache.get(cache_key, (0.0, None))
     if last_df is not None and not _should_refresh(last_ts, MIN_OHLCV_REFRESH_SEC):
         return last_df
     df = fetch_ohlcv(
@@ -123,7 +168,7 @@ def _get_cached_ohlcv(
         ema_slope_bars=cfg.ema_slope_bars,
         include_vwap=include_vwap,
     )
-    cache[timeframe] = (time.time(), df)
+    cache[cache_key] = (time.time(), df)
     return df
 
 
@@ -195,6 +240,17 @@ def generate_trading_brief(
 
     symbol = symbol or cfg.symbol
     exchange = exchange or cfg.exchange
+    symbol_norm = _normalize_symbol(symbol)
+    default_norm = _normalize_symbol(cfg.symbol)
+    sr_overrides = _load_sr_overrides()
+    if symbol_norm in sr_overrides:
+        cfg.levels = {
+            "1d": sr_overrides[symbol_norm].get("1d", []),
+            "4h": sr_overrides[symbol_norm].get("4h", []),
+        }
+    elif symbol_norm != default_norm:
+        # Avoid applying BTC-specific manual levels to other pairs when no override exists.
+        cfg.levels = {"1d": [], "4h": []}
 
     metrics = {}
     dfs = {}

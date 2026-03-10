@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <title>Trading Brief Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css?v=14" />
+    <link rel="stylesheet" href="/static/style.css?v=20" />
     <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
   </head>
   <body>
@@ -30,7 +30,28 @@
           <button id="soundToggle" type="button">Sound: OFF</button>
         </div>
       </header>
+      <div class="refresh-progress-track" aria-hidden="true">
+        <div class="refresh-progress-fill" id="refreshProgressBar"></div>
+      </div>
 
+      <section class="app-layout">
+        <aside class="card scanner-panel">
+          <div class="card-title">SCANNER TOP 40</div>
+          <div class="scanner-kpis">
+            <div class="scanner-kpi"><span>Universe</span><strong id="scanUniverse">0</strong></div>
+            <div class="scanner-kpi"><span>Open gates</span><strong id="scanOpenGates">0</strong></div>
+            <div class="scanner-kpi"><span>Near trigger</span><strong id="scanNearTrigger">0</strong></div>
+            <div class="scanner-kpi"><span>Active</span><strong id="scanActiveSetups">0</strong></div>
+          </div>
+          <div class="scanner-filters">
+            <button type="button" class="scan-filter active" data-filter="all">All</button>
+            <button type="button" class="scan-filter" data-filter="open">Gate Open</button>
+            <button type="button" class="scan-filter" data-filter="near">Near Trigger</button>
+          </div>
+          <div class="scanner-list" id="scannerList"></div>
+        </aside>
+
+        <div class="detail-panel">
       <section class="status-chart-row">
         <section class="status-bar status-watch" id="statusBar">
           <div class="status-top">
@@ -112,25 +133,27 @@
       <section class="decision-grid">
         <div class="card market-state-card compact-card">
           <div class="card-title">MARKET STATE</div>
-          <div class="state-row">
-            <span class="state-key">Context</span>
-            <span class="state-value" id="marketContext">waiting for data</span>
+          <div class="market-context-row">
+            <div class="state-key">Context</div>
+            <div class="market-context-value" id="marketContext">WAITING FOR DATA</div>
           </div>
-          <div class="state-row">
-            <span class="state-key">Liquidity</span>
-            <span class="badge gray" id="marketLiquidityBadge">PENDING</span>
-          </div>
-          <div class="state-row">
-            <span class="state-key">Volatility</span>
-            <span class="badge gray" id="marketVolatilityBadge">PENDING</span>
-          </div>
-          <div class="state-row">
-            <span class="state-key">Derivatives</span>
-            <span class="badge gray" id="marketDerivativesBadge">PENDING</span>
-          </div>
-          <div class="state-row">
-            <span class="state-key">Level event</span>
-            <span class="badge gray" id="marketLevelEventBadge">NONE</span>
+          <div class="market-state-grid">
+            <div class="market-state-item">
+              <span class="state-key">Liquidity</span>
+              <span class="badge gray" id="marketLiquidityBadge">PENDING</span>
+            </div>
+            <div class="market-state-item">
+              <span class="state-key">Volatility</span>
+              <span class="badge gray" id="marketVolatilityBadge">PENDING</span>
+            </div>
+            <div class="market-state-item">
+              <span class="state-key">Derivatives</span>
+              <span class="badge gray" id="marketDerivativesBadge">PENDING</span>
+            </div>
+            <div class="market-state-item">
+              <span class="state-key">Level event</span>
+              <span class="badge gray" id="marketLevelEventBadge">NONE</span>
+            </div>
           </div>
         </div>
 
@@ -153,6 +176,7 @@
           <div class="card-title">EXECUTION</div>
           <div class="exec-line"><span>Position size</span><span id="execPosUsd">—</span></div>
           <div class="exec-line"><span>Risk per trade</span><span id="execRisk">—</span></div>
+          <div class="exec-line"><span>Risk / total capital</span><span id="execRiskPct">—</span></div>
           <div class="exec-line" id="execStopLine"><span id="execStopLabel">Stop distance</span><span id="execStop">waiting trigger</span></div>
           <div class="exec-line"><span>Exposure active</span><span id="execExposureActive">—</span></div>
           <div class="exec-meter"><div class="exec-meter-fill" id="execExposureActiveBar"></div></div>
@@ -170,7 +194,7 @@
       </section>
 
       <section class="secondary-row">
-        <div class="card setup-card" id="longSetupCard">
+        <div class="card setup-card long-setup" id="longSetupCard">
           <div class="card-title">LONG SETUP</div>
           <div class="setup-line">
             <span class="label">Trigger</span>
@@ -200,7 +224,7 @@
             <div class="small" id="tpRuleL">Rule: pending</div>
           </details>
         </div>
-        <div class="card setup-card" id="shortSetupCard">
+        <div class="card setup-card short-setup" id="shortSetupCard">
           <div class="card-title">SHORT SETUP</div>
           <div class="setup-line">
             <span class="label">Trigger</span>
@@ -231,9 +255,11 @@
           </details>
         </div>
       </section>
+        </div>
+      </section>
 
     </div>
 
-    <script src="/static/dashboard.js?v=20"></script>
+    <script src="/static/dashboard.js?v=26"></script>
   </body>
 </html>

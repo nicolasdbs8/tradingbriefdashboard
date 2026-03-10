@@ -4,6 +4,9 @@ let lastAlertSignature = null;
 let chart = null;
 let candleSeries = null;
 let levelLines = [];
+let lastRenderTs = Date.now();
+let selectedSymbol = localStorage.getItem("selectedSymbol") || "BTC/USDC";
+let scannerFilter = "all";
 
 function initSoundToggle() {
   const toggle = document.getElementById("soundToggle");
@@ -15,6 +18,18 @@ function initSoundToggle() {
     localStorage.setItem("soundEnabled", soundEnabled ? "true" : "false");
     toggle.textContent = `Sound: ${soundEnabled ? "ON" : "OFF"}`;
     if (soundEnabled) playBeep();
+  });
+}
+
+function initScannerFilters() {
+  const buttons = document.querySelectorAll(".scan-filter");
+  buttons.forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      scannerFilter = btn.dataset.filter || "all";
+      buttons.forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      await refreshScanner();
+    });
   });
 }
 
@@ -54,13 +69,19 @@ function buildAlertSignature(brief) {
   return `${activeSetup}:${activeEvent}:${score.toFixed(1)}`;
 }
 
-async function fetchBrief() {
-  const res = await fetch("/api/brief");
+async function fetchBrief(symbol = null) {
+  const query = symbol ? `?symbol=${encodeURIComponent(symbol)}` : "";
+  const res = await fetch(`/api/brief${query}`);
   return res.json();
 }
 
 async function fetchConfig() {
   const res = await fetch("/api/config");
+  return res.json();
+}
+
+async function fetchScannerList() {
+  const res = await fetch("/api/scanner/list");
   return res.json();
 }
 
@@ -104,6 +125,20 @@ function fmt(n) {
 function fmtUsdc(n, fallback = "pending") {
   if (!hasNumber(n)) return fallback;
   return `${fmt(n)} USDC`;
+}
+
+function fmtPriceCompact(n, fallback = "pending") {
+  if (!hasNumber(n)) return fallback;
+  const v = Number(n);
+  if (Math.abs(v) >= 10000) {
+    return v.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  }
+  return v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fmtUsdcCompact(n, fallback = "pending") {
+  if (!hasNumber(n)) return fallback;
+  return `${fmtPriceCompact(n)} USDC`;
 }
 
 function fmtOr(n, fallback = "--") {
@@ -184,7 +219,7 @@ function buildTpRuleText(side, entry, tp1, sizeUsd, estimatedCostPct) {
   const movePct = ((sign * (Number(tp1.price) - Number(entry))) / Number(entry)) * 100;
   const closedNotional = Number(sizeUsd) * Number(tp1.size_pct);
   const grossLocked = closedNotional * (Math.abs(movePct) / 100);
-  let text = `Rule: TP1 ${fmtUsdc(tp1.price)} (${(Number(tp1.size_pct) * 100).toFixed(0)}%) -> SL BE ${fmtUsdc(entry)} | Lock +${fmt(grossLocked)} USDC`;
+  let text = `Rule: TP1 ${fmtUsdcCompact(tp1.price)} (${(Number(tp1.size_pct) * 100).toFixed(0)}%) -> SL BE ${fmtUsdcCompact(entry)} | Lock +${fmt(grossLocked)} USDC`;
   if (hasNumber(estimatedCostPct)) {
     const netApprox = Math.max(0, grossLocked - closedNotional * (Number(estimatedCostPct) / 100));
     text += ` | Net~ +${fmt(netApprox)} USDC`;
@@ -263,11 +298,128 @@ function setNextRefresh(now) {
   setText("nextRefresh", `Next refresh: ${next.toISOString().slice(11, 16)} UTC`);
 }
 
+function updateRefreshProgress() {
+  const bar = document.getElementById("refreshProgressBar");
+  if (!bar || refreshIntervalSec <= 0) return;
+  const elapsedSec = Math.max(0, (Date.now() - lastRenderTs) / 1000);
+  const pct = Math.max(0, Math.min(100, (elapsedSec / refreshIntervalSec) * 100));
+  bar.style.width = `${pct}%`;
+}
+
+function updateLastUpdateFreshness() {
+  const el = document.getElementById("lastUpdate");
+  if (!el) return;
+  el.classList.remove("fresh-green", "fresh-orange", "fresh-red");
+  const ageSec = Math.max(0, (Date.now() - lastRenderTs) / 1000);
+  if (ageSec < 60) el.classList.add("fresh-green");
+  else if (ageSec > 180) el.classList.add("fresh-orange");
+  if (ageSec > 300) el.classList.add("fresh-red");
+}
+
 function setBadge(id, label, tone = "gray") {
   const el = document.getElementById(id);
   if (!el) return;
   el.textContent = label;
   el.className = `badge ${tone}`;
+}
+
+function symbolBadgeTone(row) {
+  if (row.action === "LONG ACTIVE") return "green";
+  if (row.action === "SHORT ACTIVE") return "red";
+  if (row.gate_open) return "blue";
+  if (row.status === "WATCH") return "orange";
+  return "gray";
+}
+
+function setSelectedSymbol(symbol) {
+  selectedSymbol = symbol;
+  localStorage.setItem("selectedSymbol", symbol);
+  const url = new URL(window.location.href);
+  url.searchParams.set("symbol", symbol);
+  window.history.replaceState({}, "", url.toString());
+}
+
+function applyScannerFilter(rows) {
+  if (scannerFilter === "open") {
+    return rows.filter((row) => row.gate_open);
+  }
+  if (scannerFilter === "near") {
+    return rows.filter((row) => hasNumber(row.trigger_distance_pct) && Math.abs(Number(row.trigger_distance_pct)) <= 0.35);
+  }
+  return rows;
+}
+
+function renderScanner(data) {
+  const summary = data?.summary || {};
+  setText("scanUniverse", String(summary.universe_size ?? 0));
+  setText("scanOpenGates", String(summary.open_gates ?? 0));
+  setText("scanNearTrigger", String(summary.near_trigger ?? 0));
+  setText("scanActiveSetups", String(summary.active_setups ?? 0));
+
+  const list = document.getElementById("scannerList");
+  if (!list) return;
+  const rows = applyScannerFilter(data?.rows || []);
+  list.innerHTML = "";
+  if (!rows.length) {
+    const empty = document.createElement("div");
+    empty.className = "small";
+    empty.textContent = "No pair matches current filter";
+    list.appendChild(empty);
+    return;
+  }
+
+  rows.forEach((row) => {
+    const card = document.createElement("div");
+    card.className = `scanner-row${row.symbol === selectedSymbol ? " selected" : ""}`;
+
+    const top = document.createElement("div");
+    top.className = "scanner-row-top";
+    const symbol = document.createElement("div");
+    symbol.className = "scanner-symbol";
+    symbol.textContent = row.symbol || "N/A";
+    const badge = document.createElement("span");
+    badge.className = `badge ${symbolBadgeTone(row)}`;
+    badge.textContent = row.action || row.status || "PENDING";
+    top.appendChild(symbol);
+    top.appendChild(badge);
+
+    const meta = document.createElement("div");
+    meta.className = "scanner-meta";
+    const score = document.createElement("span");
+    score.className = "scanner-score";
+    score.textContent = hasNumber(row.score) ? `Score ${Number(row.score).toFixed(1)}/10` : "Score pending";
+    const dist = document.createElement("span");
+    const isNear = hasNumber(row.trigger_distance_pct) && Math.abs(Number(row.trigger_distance_pct)) <= 0.35;
+    dist.className = `scanner-distance ${isNear ? "near" : "far"}`;
+    dist.textContent = hasNumber(row.trigger_distance_pct) ? fmtSignedPct(row.trigger_distance_pct) : "--";
+    meta.appendChild(score);
+    meta.appendChild(dist);
+
+    card.appendChild(top);
+    card.appendChild(meta);
+    card.addEventListener("click", async () => {
+      setSelectedSymbol(row.symbol);
+      await refresh();
+      await refreshScanner();
+    });
+    list.appendChild(card);
+  });
+}
+
+async function refreshScanner() {
+  try {
+    const data = await fetchScannerList();
+    renderScanner(data);
+  } catch (err) {
+    const list = document.getElementById("scannerList");
+    if (list) {
+      list.innerHTML = "";
+      const item = document.createElement("div");
+      item.className = "small";
+      item.textContent = "Scanner unavailable (API timeout). Retry in a few seconds.";
+      list.appendChild(item);
+    }
+  }
 }
 
 function clearScenarioHighlight() {
@@ -303,6 +455,19 @@ function applyScenarioHighlight(activeSetup) {
   waitLine?.classList.add("active");
   longLine?.classList.add("dimmed");
   shortLine?.classList.add("dimmed");
+}
+
+function applyBiasHint(activeSetup, biasReason) {
+  const longCard = document.getElementById("longSetupCard");
+  const shortCard = document.getElementById("shortSetupCard");
+  if (!longCard || !shortCard) return;
+  longCard.classList.remove("bias-hint");
+  shortCard.classList.remove("bias-hint");
+  if (activeSetup !== "NONE") return;
+  const hasBear = /bear/i.test(String(biasReason || ""));
+  const hasBull = /bull/i.test(String(biasReason || ""));
+  if (hasBear) shortCard.classList.add("bias-hint");
+  else if (hasBull) longCard.classList.add("bias-hint");
 }
 
 function deriveCurrentAction(brief, scoreValue) {
@@ -363,17 +528,20 @@ function render(brief) {
   }
 
   const now = new Date();
+  lastRenderTs = now.getTime();
   setText("lastUpdate", `Last update: ${now.toISOString().slice(11, 16)} UTC`);
+  updateLastUpdateFreshness();
   setNextRefresh(now);
+  updateRefreshProgress();
   setText("headerPair", `${brief.symbol} | ${brief.exchange}`);
 
-  setText("price", fmtUsdc(brief.price, "waiting for data"));
+  setText("price", fmtUsdcCompact(brief.price, "waiting for data"));
   const biasReasonRaw = compactContext(brief.market_bias?.reason ?? "pending");
   const biasMain = biasReasonRaw.toUpperCase();
   const biasKind = brief.market_bias?.bias ?? "PENDING";
   setText("marketBias", biasMain);
   setText("marketBiasSub", `Bias type: ${biasKind}`);
-  setText("criticalLevel", fmtUsdc(brief.critical_level, "not available"));
+  setText("criticalLevel", fmtUsdcCompact(brief.critical_level, "not available"));
   setText("criticalLevelDist", `Distance: ${fmtSignedPct(brief.critical_level_distance_pct)}`);
   setText("criticalLevelType", `Trigger type: ${deriveTriggerType(brief.critical_level_distance_pct)}`);
   setText("criticalLevelSource", `Source: ${String(brief.critical_level_source ?? "1h").toUpperCase()}`);
@@ -459,27 +627,27 @@ function render(brief) {
   setText("playbookLong", "Sweep + reclaim -> LONG");
   setText("playbookShort", "Break below -> SHORT continuation");
   setText("longCondition", brief.setups?.long?.condition ?? "pending");
-  setText("longEntry", fmtUsdc(brief.setups?.long?.entry, "pending"));
-  setText("longStop", fmtUsdc(brief.setups?.long?.stop, "pending"));
-  setText("longTarget", fmtUsdc(brief.setups?.long?.target, "pending"));
+  setText("longEntry", fmtUsdcCompact(brief.setups?.long?.entry, "pending"));
+  setText("longStop", fmtUsdcCompact(brief.setups?.long?.stop, "pending"));
+  setText("longTarget", fmtUsdcCompact(brief.setups?.long?.target, "pending"));
   setText("shortCondition", brief.setups?.short?.condition ?? "pending");
-  setText("shortEntry", fmtUsdc(brief.setups?.short?.entry, "pending"));
-  setText("shortStop", fmtUsdc(brief.setups?.short?.stop, "pending"));
-  setText("shortTarget", fmtUsdc(brief.setups?.short?.target, "pending"));
+  setText("shortEntry", fmtUsdcCompact(brief.setups?.short?.entry, "pending"));
+  setText("shortStop", fmtUsdcCompact(brief.setups?.short?.stop, "pending"));
+  setText("shortTarget", fmtUsdcCompact(brief.setups?.short?.target, "pending"));
   const longRR = computeRR(brief.setups?.long?.entry, brief.setups?.long?.stop, brief.setups?.long?.target);
   const shortRR = computeRR(brief.setups?.short?.entry, brief.setups?.short?.stop, brief.setups?.short?.target);
   setText("longRR", hasNumber(longRR) ? longRR.toFixed(2) : "pending");
   setText("shortRR", hasNumber(shortRR) ? shortRR.toFixed(2) : "pending");
 
   if (brief.tp_plan_long && brief.tp_plan_long.length >= 3) {
-    setText("tp1L", `TP1 ${fmtUsdc(brief.tp_plan_long[0].price)} (${(brief.tp_plan_long[0].size_pct * 100).toFixed(0)}%)`);
-    setText("tp2L", `TP2 ${fmtUsdc(brief.tp_plan_long[1].price)} (${(brief.tp_plan_long[1].size_pct * 100).toFixed(0)}%)`);
-    setText("tp3L", `TP3 ${fmtUsdc(brief.tp_plan_long[2].price)} (${(brief.tp_plan_long[2].size_pct * 100).toFixed(0)}%)`);
+    setText("tp1L", `TP1 ${fmtUsdcCompact(brief.tp_plan_long[0].price)} (${(brief.tp_plan_long[0].size_pct * 100).toFixed(0)}%)`);
+    setText("tp2L", `TP2 ${fmtUsdcCompact(brief.tp_plan_long[1].price)} (${(brief.tp_plan_long[1].size_pct * 100).toFixed(0)}%)`);
+    setText("tp3L", `TP3 ${fmtUsdcCompact(brief.tp_plan_long[2].price)} (${(brief.tp_plan_long[2].size_pct * 100).toFixed(0)}%)`);
   }
   if (brief.tp_plan_short && brief.tp_plan_short.length >= 3) {
-    setText("tp1S", `TP1 ${fmtUsdc(brief.tp_plan_short[0].price)} (${(brief.tp_plan_short[0].size_pct * 100).toFixed(0)}%)`);
-    setText("tp2S", `TP2 ${fmtUsdc(brief.tp_plan_short[1].price)} (${(brief.tp_plan_short[1].size_pct * 100).toFixed(0)}%)`);
-    setText("tp3S", `TP3 ${fmtUsdc(brief.tp_plan_short[2].price)} (${(brief.tp_plan_short[2].size_pct * 100).toFixed(0)}%)`);
+    setText("tp1S", `TP1 ${fmtUsdcCompact(brief.tp_plan_short[0].price)} (${(brief.tp_plan_short[0].size_pct * 100).toFixed(0)}%)`);
+    setText("tp2S", `TP2 ${fmtUsdcCompact(brief.tp_plan_short[1].price)} (${(brief.tp_plan_short[1].size_pct * 100).toFixed(0)}%)`);
+    setText("tp3S", `TP3 ${fmtUsdcCompact(brief.tp_plan_short[2].price)} (${(brief.tp_plan_short[2].size_pct * 100).toFixed(0)}%)`);
   }
 
   setText("contextCapitalTotal", `Capital total: ${fmtUsdc(brief.capital?.total, "not available")}`);
@@ -487,6 +655,8 @@ function render(brief) {
 
   const contextReason = biasReasonRaw;
   setText("marketContext", contextReason);
+  const marketContextEl = document.getElementById("marketContext");
+  if (marketContextEl) marketContextEl.textContent = String(contextReason || "pending").toUpperCase();
 
   const liquidityRaw = String(brief.liquidity_distance?.asymmetry ?? "pending");
   const liquidityText = liquidityRaw.toUpperCase();
@@ -525,6 +695,11 @@ function render(brief) {
 
   setText("execPosUsd", hasNumber(brief.position_size?.usdc) ? `${fmt(brief.position_size.usdc)} USDC` : "--");
   setText("execRisk", hasNumber(brief.position_size?.risk_per_trade) ? `${fmt(brief.position_size.risk_per_trade)} USDC` : "--");
+  const riskPctTotal =
+    hasNumber(brief.position_size?.risk_per_trade) && hasNumber(brief.capital?.total) && Number(brief.capital.total) > 0
+      ? (Number(brief.position_size.risk_per_trade) / Number(brief.capital.total)) * 100
+      : null;
+  setText("execRiskPct", hasNumber(riskPctTotal) ? `${fmt(riskPctTotal)}%` : "--");
   setText("execExposureActive", hasNumber(brief.position_size?.exposure_active_pct) ? `${fmt(brief.position_size.exposure_active_pct)}%` : "--");
   setText("execExposureTotal", hasNumber(brief.position_size?.exposure_total_pct) ? `${fmt(brief.position_size.exposure_total_pct)}%` : "--");
   const activeBar = document.getElementById("execExposureActiveBar");
@@ -580,9 +755,10 @@ function render(brief) {
   const action = deriveCurrentAction(brief, scoreValue);
   syncTpDetails(Boolean(gateOpen), activeSetup);
   setText("decisionAction", action);
-  setText("decisionLevel", `Watch level: ${fmtUsdc(brief.critical_level, "not available")}`);
+  setText("decisionLevel", `Watch level: ${fmtUsdcCompact(brief.critical_level, "not available")}`);
   setText("decisionTriggerDistanceValue", fmtSignedPct(brief.critical_level_distance_pct));
   applyScenarioHighlight(activeSetup);
+  applyBiasHint(activeSetup, biasReasonRaw);
 
   let status = "WATCH";
   if (activeSetup === "LONG" || activeSetup === "SHORT") status = "SETUP ACTIVE";
@@ -623,8 +799,11 @@ function render(brief) {
 }
 
 async function refresh() {
-  const brief = await fetchBrief();
+  const brief = await fetchBrief(selectedSymbol);
   render(brief);
+  if (brief?.symbol) {
+    setSelectedSymbol(brief.symbol);
+  }
 }
 
 document.getElementById("refreshNow").addEventListener("click", async () => {
@@ -632,8 +811,13 @@ document.getElementById("refreshNow").addEventListener("click", async () => {
   btn.disabled = true;
   const old = btn.textContent;
   btn.textContent = "Refreshing...";
-  await fetch("/api/refresh", { method: "POST" });
+  await fetch("/api/refresh", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ symbol: selectedSymbol }),
+  });
   await refresh();
+  await refreshScanner();
   const now = new Date();
   setText("lastUpdate", `Last update: ${now.toISOString().slice(11, 16)} UTC`);
   setNextRefresh(now);
@@ -653,7 +837,19 @@ document.getElementById("refreshSelect").addEventListener("change", async (e) =>
 });
 
 setInterval(refresh, 10000);
+setInterval(refreshScanner, 30000);
+setInterval(() => {
+  updateRefreshProgress();
+  updateLastUpdateFreshness();
+}, 1000);
+
+const initialSymbol = new URL(window.location.href).searchParams.get("symbol");
+if (initialSymbol) {
+  setSelectedSymbol(initialSymbol);
+}
+initScannerFilters();
 refresh();
+refreshScanner();
 
 fetchConfig().then((cfg) => {
   const select = document.getElementById("refreshSelect");
