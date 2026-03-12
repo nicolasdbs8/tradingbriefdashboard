@@ -14,6 +14,7 @@ let currentPairAttention = null;
 let universeAttention = null;
 let lastAttentionState = null;
 let unreadEvents = 0;
+let detailRefreshTimer = null;
 const BASE_TITLE = "Trading Brief Dashboard";
 
 function initSoundToggle() {
@@ -1120,6 +1121,14 @@ async function refresh() {
   }
 }
 
+function setupDetailRefreshTimer() {
+  if (detailRefreshTimer) clearInterval(detailRefreshTimer);
+  const ms = Math.max(60, Number(refreshIntervalSec || 300)) * 1000;
+  detailRefreshTimer = setInterval(() => {
+    refresh();
+  }, ms);
+}
+
 document.getElementById("refreshNow").addEventListener("click", async () => {
   const btn = document.getElementById("refreshNow");
   btn.disabled = true;
@@ -1148,9 +1157,9 @@ document.getElementById("refreshSelect").addEventListener("change", async (e) =>
     body: JSON.stringify({ refresh_interval: value }),
   });
   setNextRefresh(new Date());
+  setupDetailRefreshTimer();
 });
 
-setInterval(refresh, 10000);
 setInterval(refreshScanner, 30000);
 setInterval(() => {
   updateRefreshProgress();
@@ -1164,6 +1173,7 @@ if (initialSymbol) {
 initScannerFilters();
 refresh();
 refreshScanner();
+setupDetailRefreshTimer();
 
 fetchConfig().then((cfg) => {
   const select = document.getElementById("refreshSelect");
@@ -1172,6 +1182,7 @@ fetchConfig().then((cfg) => {
     if (select) select.value = String(cfg.refresh_interval);
   }
   setNextRefresh(new Date());
+  setupDetailRefreshTimer();
 });
 
 initSoundToggle();
