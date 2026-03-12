@@ -137,6 +137,64 @@ def _load_sr_overrides(path: str = "config/sr_overrides.json") -> Dict[str, Dict
     return normalized
 
 
+def _auto_levels_from_df(
+    df: pd.DataFrame,
+    tolerance_pct: float,
+    max_levels: int = 14,
+) -> list[float]:
+    if df is None or df.empty:
+        return []
+
+    highs = df["high"].astype(float).to_numpy()
+    lows = df["low"].astype(float).to_numpy()
+    closes = df["close"].astype(float)
+    n = len(df)
+    if n < 12:
+        return []
+
+    window = 3 if n >= 80 else 2
+    candidates: list[tuple[float, float]] = []
+
+    for i in range(window, n - window):
+        h_slice = highs[i - window : i + window + 1]
+        l_slice = lows[i - window : i + window + 1]
+        recency_boost = 1.0 + (i / n) * 0.7
+        if highs[i] >= h_slice.max():
+            candidates.append((float(highs[i]), recency_boost))
+        if lows[i] <= l_slice.min():
+            candidates.append((float(lows[i]), recency_boost))
+
+    # Add broad distribution anchors to stabilize sparse pivot sets.
+    for q in (0.15, 0.3, 0.5, 0.7, 0.85):
+        try:
+            candidates.append((float(closes.quantile(q)), 0.45))
+        except Exception:
+            continue
+
+    clusters: list[dict[str, float]] = []
+    tol = max(0.001, float(tolerance_pct))
+    for level, strength in sorted(candidates, key=lambda item: item[0]):
+        if level <= 0:
+            continue
+        if not clusters:
+            clusters.append({"level": level, "strength": strength})
+            continue
+        prev = clusters[-1]
+        dist = abs(level - prev["level"]) / max(prev["level"], 1e-9)
+        if dist <= tol:
+            total = prev["strength"] + strength
+            prev["level"] = (prev["level"] * prev["strength"] + level * strength) / total
+            prev["strength"] = total
+        else:
+            clusters.append({"level": level, "strength": strength})
+
+    if not clusters:
+        return []
+
+    strongest = sorted(clusters, key=lambda c: c["strength"], reverse=True)[:max_levels]
+    return sorted(round(float(c["level"]), 8) for c in strongest)
+
+
 def _get_cached_ohlcv(
     symbol: str,
     timeframe: str,
@@ -243,14 +301,17 @@ def generate_trading_brief(
     symbol_norm = _normalize_symbol(symbol)
     default_norm = _normalize_symbol(cfg.symbol)
     sr_overrides = _load_sr_overrides()
+    levels_mode = "config"
     if symbol_norm in sr_overrides:
         cfg.levels = {
             "1d": sr_overrides[symbol_norm].get("1d", []),
             "4h": sr_overrides[symbol_norm].get("4h", []),
         }
+        levels_mode = "manual_override"
     elif symbol_norm != default_norm:
-        # Avoid applying BTC-specific manual levels to other pairs when no override exists.
+        # Auto-build levels for non-default symbols when no manual override is provided.
         cfg.levels = {"1d": [], "4h": []}
+        levels_mode = "auto_pending"
 
     metrics = {}
     dfs = {}
@@ -269,6 +330,20 @@ def generate_trading_brief(
         used_exchange = df["exchange"].iloc[-1]
         dfs[timeframe] = df
         metrics[timeframe] = build_metrics(timeframe=timeframe, df=df)
+
+    if levels_mode == "auto_pending":
+        lvl_1d = _auto_levels_from_df(
+            dfs.get("1d"),
+            tolerance_pct=float(cfg.levels_tolerance_pct.get("1d", 0.01)),
+            max_levels=14,
+        )
+        lvl_4h = _auto_levels_from_df(
+            dfs.get("4h"),
+            tolerance_pct=float(cfg.levels_tolerance_pct.get("4h", 0.006)),
+            max_levels=14,
+        )
+        cfg.levels = {"1d": lvl_1d, "4h": lvl_4h}
+        levels_mode = "auto_generated"
 
     triggers = {}
     if "15m" in dfs:
@@ -299,6 +374,7 @@ def generate_trading_brief(
             "sweep_reclaim_now": sweep_reclaim_now,
             "vwap_retest": vwap_retest,
             "volume_breakout": volume_breakout,
+            "levels_mode": levels_mode,
         }
 
         h1_metrics = metrics.get("1h")

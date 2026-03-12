@@ -849,7 +849,10 @@ function render(brief) {
   setText("criticalLevel", fmtUsdcCompact(brief.critical_level, "not available"));
   setText("criticalLevelDist", `Distance: ${fmtSignedPct(brief.critical_level_distance_pct)}`);
   setText("criticalLevelType", `Trigger type: ${deriveTriggerType(brief.critical_level_distance_pct)}`);
-  setText("criticalLevelSource", `Source: ${String(brief.critical_level_source ?? "1h").toUpperCase()}`);
+  const srSourceRaw = String(brief.sr_levels_source || "config");
+  const srMode =
+    srSourceRaw === "manual_override" ? "MANUAL" : srSourceRaw === "auto_generated" ? "AUTO" : "CONFIG";
+  setText("criticalLevelSource", `Source: ${String(brief.critical_level_source ?? "1h").toUpperCase()} • ${srMode}`);
 
   const hasBear = /bear/i.test(biasReasonRaw);
   const hasBull = /bull/i.test(biasReasonRaw);

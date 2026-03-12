@@ -1191,6 +1191,7 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
     return {
         "symbol": report.symbol,
         "exchange": report.exchange,
+        "sr_levels_source": report.triggers.get("levels_mode", "config"),
         "price": m15.price,
         "setup_profile": f"{report.setup_preset_name} (entry={report.setup_entry_mode}, stop={report.setup_stop_atr_mult} ATR, target={report.setup_target_timeframe})",
         "market_bias": {
