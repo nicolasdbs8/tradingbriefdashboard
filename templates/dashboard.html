@@ -3,15 +3,19 @@
   <head>
     <meta charset="utf-8" />
     <title>Trading Brief Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css?v=22" />
+    <link rel="stylesheet" href="/static/style.css?v=27" />
     <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
   </head>
   <body>
     <div class="page" id="pageRoot">
       <header class="header">
         <div class="header-left">
-          <div class="title">Trading Brief Dashboard</div>
-          <div class="subtitle" id="headerPair">BTC/USDC | Binance</div>
+          <div class="title">Trading Brief <span>Dashboard</span></div>
+          <div class="subtitle">Multi-pair setup monitor</div>
+        </div>
+        <div class="header-center">
+          <div class="active-pair-label">Active pair</div>
+          <div class="active-pair-pill" id="headerPair">BTC/USDC | Binance</div>
         </div>
         <div class="header-meta">
           <div class="meta" id="lastUpdate">Last update: waiting for data</div>
@@ -28,6 +32,7 @@
           </select>
           <button id="refreshNow">Refresh now</button>
           <button id="soundToggle" type="button">Sound: OFF</button>
+          <button id="notifyToggle" type="button">Notify: OFF</button>
         </div>
       </header>
       <div class="refresh-progress-track" aria-hidden="true">
@@ -47,6 +52,25 @@
             <button type="button" class="scan-filter active" data-filter="all">All</button>
             <button type="button" class="scan-filter" data-filter="interesting">Interesting</button>
             <button type="button" class="scan-filter" data-filter="open">Gate Open</button>
+            <button type="button" class="scan-filter" data-filter="active">Active</button>
+            <button type="button" class="scan-filter" data-filter="watch">Watch</button>
+            <button type="button" class="scan-filter" data-filter="movers">Top Movers</button>
+            <button type="button" class="scan-filter" data-filter="liquid">High Liquidity</button>
+            <button type="button" class="scan-filter" data-filter="tight">Low Spread</button>
+            <button type="button" class="scan-filter" data-filter="fresh">Fresh</button>
+          </div>
+          <div class="scanner-sort-row">
+            <label for="scannerSort">Sort</label>
+            <select id="scannerSort">
+              <option value="opportunity_desc" selected>Opportunity</option>
+              <option value="engine_score_desc">Engine score</option>
+              <option value="volume_desc">Volume</option>
+              <option value="move_abs_desc">24h move</option>
+              <option value="spread_asc">Spread</option>
+              <option value="freshness_asc">Freshness</option>
+              <option value="symbol_asc">Alphabetical (A-Z)</option>
+              <option value="symbol_desc">Alphabetical (Z-A)</option>
+            </select>
           </div>
           <div class="scanner-list" id="scannerList"></div>
         </aside>
@@ -156,6 +180,11 @@
               <span class="badge gray" id="marketLevelEventBadge">NONE</span>
             </div>
           </div>
+          <div class="market-summary-box">
+            <div class="market-summary-title">Plain-language summary</div>
+            <div class="market-summary-reading" id="marketSummaryReading">Reading: waiting for data.</div>
+            <div class="market-summary-action" id="marketSummaryAction">Now: wait for clearer confirmation.</div>
+          </div>
         </div>
 
         <div class="card playbook-card compact-card">
@@ -213,6 +242,7 @@
             <span class="label">Target</span>
             <span class="value setup-target" id="longTarget">not available</span>
           </div>
+          <div class="setup-delta" id="longDelta">Stop distance: pending | Target distance: pending</div>
           <div class="setup-line">
             <span class="label">R/R</span>
             <span class="value" id="longRR">pending</span>
@@ -243,6 +273,7 @@
             <span class="label">Target</span>
             <span class="value setup-target" id="shortTarget">not available</span>
           </div>
+          <div class="setup-delta" id="shortDelta">Stop distance: pending | Target distance: pending</div>
           <div class="setup-line">
             <span class="label">R/R</span>
             <span class="value" id="shortRR">pending</span>
@@ -261,6 +292,6 @@
 
     </div>
 
-    <script src="/static/dashboard.js?v=28"></script>
+    <script src="/static/dashboard.js?v=37"></script>
   </body>
 </html>

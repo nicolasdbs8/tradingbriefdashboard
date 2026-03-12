@@ -1,5 +1,6 @@
 let refreshIntervalSec = 300;
 let soundEnabled = false;
+let notifyEnabled = false;
 let lastAlertSignature = null;
 let chart = null;
 let candleSeries = null;
@@ -7,6 +8,13 @@ let levelLines = [];
 let lastRenderTs = Date.now();
 let selectedSymbol = localStorage.getItem("selectedSymbol") || "BTC/USDC";
 let scannerFilter = "all";
+let scannerSort = localStorage.getItem("scannerSort") || "opportunity_desc";
+let quoteCurrency = "USDC";
+let currentPairAttention = null;
+let universeAttention = null;
+let lastAttentionState = null;
+let unreadEvents = 0;
+const BASE_TITLE = "Trading Brief Dashboard";
 
 function initSoundToggle() {
   const toggle = document.getElementById("soundToggle");
@@ -21,6 +29,30 @@ function initSoundToggle() {
   });
 }
 
+function initNotifyToggle() {
+  const toggle = document.getElementById("notifyToggle");
+  if (!toggle) return;
+  notifyEnabled = localStorage.getItem("notifyEnabled") === "true";
+  toggle.textContent = `Notify: ${notifyEnabled ? "ON" : "OFF"}`;
+  toggle.addEventListener("click", async () => {
+    const next = !notifyEnabled;
+    if (next && "Notification" in window && Notification.permission === "default") {
+      try {
+        await Notification.requestPermission();
+      } catch (err) {
+        // ignore permission errors
+      }
+    }
+    if (next && "Notification" in window && Notification.permission === "denied") {
+      notifyEnabled = false;
+    } else {
+      notifyEnabled = next;
+    }
+    localStorage.setItem("notifyEnabled", notifyEnabled ? "true" : "false");
+    toggle.textContent = `Notify: ${notifyEnabled ? "ON" : "OFF"}`;
+  });
+}
+
 function initScannerFilters() {
   const buttons = document.querySelectorAll(".scan-filter");
   buttons.forEach((btn) => {
@@ -31,6 +63,15 @@ function initScannerFilters() {
       await refreshScanner();
     });
   });
+  const sortSelect = document.getElementById("scannerSort");
+  if (sortSelect) {
+    sortSelect.value = scannerSort;
+    sortSelect.addEventListener("change", async () => {
+      scannerSort = sortSelect.value || "opportunity_desc";
+      localStorage.setItem("scannerSort", scannerSort);
+      await refreshScanner();
+    });
+  }
 }
 
 function playBeep() {
@@ -67,6 +108,116 @@ function buildAlertSignature(brief) {
   const activeSetup = brief.trade?.active_setup ?? "NONE";
   const activeEvent = brief.level_event?.active_event ?? "none";
   return `${activeSetup}:${activeEvent}:${score.toFixed(1)}`;
+}
+
+function buildFaviconDataUrl(color) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="28" fill="${color}"/><circle cx="24" cy="22" r="8" fill="rgba(255,255,255,0.35)"/></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+function setFaviconColor(color) {
+  let link = document.getElementById("dynamicFavicon");
+  if (!link) {
+    link = document.createElement("link");
+    link.id = "dynamicFavicon";
+    link.rel = "icon";
+    document.head.appendChild(link);
+  }
+  link.href = buildFaviconDataUrl(color);
+}
+
+function attentionStateFrom(action, status, gateOpen, symbol) {
+  if (action === "LONG ACTIVE" || action === "SHORT ACTIVE") {
+    return { tone: "green", icon: "🟢", label: action, color: "#22c55e", symbol };
+  }
+  if (action === "WATCH") {
+    return { tone: "orange", icon: "🟠", label: "WATCH", color: "#f59e0b", symbol };
+  }
+  if (!gateOpen && status === "NO SETUP") {
+    return { tone: "red", icon: "🔴", label: "BLOCKED", color: "#ef4444", symbol };
+  }
+  return { tone: "gray", icon: "⚪", label: action || "WAIT", color: "#64748b", symbol };
+}
+
+function isMajorAttentionTransition(prevState, nextState) {
+  if (!prevState) return false;
+  const becameActive = prevState.label !== nextState.label && (nextState.label === "LONG ACTIVE" || nextState.label === "SHORT ACTIVE");
+  const becameWatch = prevState.label !== "WATCH" && nextState.label === "WATCH";
+  const changedTone = prevState.tone !== nextState.tone && (nextState.tone === "green" || nextState.tone === "orange");
+  return becameActive || becameWatch || changedTone;
+}
+
+function applyAttentionState(next) {
+  if (!next) return;
+  setFaviconColor(next.color);
+  if (document.hidden && isMajorAttentionTransition(lastAttentionState, next)) {
+    unreadEvents += 1;
+    if (notifyEnabled && "Notification" in window && Notification.permission === "granted") {
+      try {
+        new Notification(`${next.label} on ${symbol}`, {
+          body: `State changed to ${next.label}. Open dashboard for details.`,
+          silent: true,
+        });
+      } catch (err) {
+        // ignore notification errors
+      }
+    }
+  }
+  const unreadPrefix = unreadEvents > 0 ? `(${unreadEvents}) ` : "";
+  document.title = `${unreadPrefix}${next.icon} [${next.label}] ${next.symbol} · ${BASE_TITLE}`;
+  lastAttentionState = next;
+}
+
+function syncAttentionUI() {
+  const source = universeAttention || currentPairAttention;
+  if (!source) return;
+  applyAttentionState(source);
+}
+
+function updateAttentionUI(action, status, gateOpen, symbol) {
+  currentPairAttention = attentionStateFrom(action, status, gateOpen, symbol);
+  syncAttentionUI();
+}
+
+function buildUniverseAttention(rows) {
+  if (!rows || !rows.length) return null;
+  const ranked = [...rows].sort((a, b) => {
+    const rank = (row) => {
+      const isEngine = row.fast_mode !== true;
+      if (isEngine && (row.action === "LONG ACTIVE" || row.action === "SHORT ACTIVE")) return 0;
+      if (isEngine && row.gate_open) return 1;
+      if (isEngine && row.action === "WATCH") return 2;
+      if (row.interesting && hasNumber(row.opportunity_score) && Number(row.opportunity_score) >= 70) return 3;
+      if (row.interesting) return 4;
+      return 5;
+    };
+    const ra = rank(a);
+    const rb = rank(b);
+    if (ra !== rb) return ra - rb;
+    const oppA = hasNumber(a.opportunity_score) ? Number(a.opportunity_score) : -1;
+    const oppB = hasNumber(b.opportunity_score) ? Number(b.opportunity_score) : -1;
+    if (oppA !== oppB) return oppB - oppA;
+    return String(a.symbol || "").localeCompare(String(b.symbol || ""));
+  });
+  const best = ranked[0];
+  if (!best) return null;
+  const isEngine = best.fast_mode !== true;
+  if (isEngine && (best.action === "LONG ACTIVE" || best.action === "SHORT ACTIVE")) {
+    return { tone: "green", icon: "🟢", label: `${best.action}`, color: "#22c55e", symbol: best.symbol };
+  }
+  if (isEngine && best.gate_open) {
+    return { tone: "green", icon: "🟢", label: "GATE OPEN", color: "#16a34a", symbol: best.symbol };
+  }
+  if (isEngine && best.action === "WATCH") {
+    return { tone: "orange", icon: "🟠", label: "WATCH", color: "#f59e0b", symbol: best.symbol };
+  }
+  if (best.interesting && hasNumber(best.opportunity_score) && Number(best.opportunity_score) >= 70) {
+    return { tone: "orange", icon: "🟠", label: "SCAN HOT", color: "#f59e0b", symbol: best.symbol };
+  }
+  if (best.interesting) {
+    return { tone: "orange", icon: "🟠", label: "SCAN WATCH", color: "#f59e0b", symbol: best.symbol };
+  }
+  return { tone: "gray", icon: "⚪", label: "SCAN OK", color: "#64748b", symbol: best.symbol || selectedSymbol };
 }
 
 async function fetchBrief(symbol = null) {
@@ -124,7 +275,7 @@ function fmt(n) {
 
 function fmtUsdc(n, fallback = "pending") {
   if (!hasNumber(n)) return fallback;
-  return `${fmt(n)} USDC`;
+  return `${fmt(n)} ${quoteCurrency}`;
 }
 
 function fmtPriceCompact(n, fallback = "pending") {
@@ -136,9 +287,24 @@ function fmtPriceCompact(n, fallback = "pending") {
   return v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function fmtPriceAdaptive(n, fallback = "pending") {
+  if (!hasNumber(n)) return fallback;
+  const v = Number(n);
+  const abs = Math.abs(v);
+  let decimals = 2;
+  if (abs >= 10000) decimals = 0;
+  else if (abs >= 1000) decimals = 1;
+  else if (abs >= 1) decimals = 2;
+  else if (abs >= 0.1) decimals = 4;
+  else if (abs >= 0.01) decimals = 5;
+  else if (abs >= 0.001) decimals = 6;
+  else decimals = 7;
+  return v.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+}
+
 function fmtUsdcCompact(n, fallback = "pending") {
   if (!hasNumber(n)) return fallback;
-  return `${fmtPriceCompact(n)} USDC`;
+  return `${fmtPriceAdaptive(n)} ${quoteCurrency}`;
 }
 
 function fmtOr(n, fallback = "--") {
@@ -202,12 +368,54 @@ function deriveLevelEventBadge(brief) {
   return { label: "NONE", tone: "gray" };
 }
 
+function buildMarketSummary(liquidityRaw, volRaw, derivativesState, levelEventLabel) {
+  const liq = String(liquidityRaw || "pending").toLowerCase();
+  const vol = String(volRaw || "pending").toLowerCase();
+  const der = String(derivativesState || "pending").toUpperCase();
+  const evt = String(levelEventLabel || "NONE").toUpperCase();
+
+  let reading = "Mixed market conditions with no clear edge yet.";
+  let action = "Wait for stronger confirmation before acting.";
+
+  if (evt.includes("CONFIRMED")) {
+    reading = "A structural event is confirmed and can become actionable.";
+    action = "Focus on playbook direction and execute only if trade gate is open.";
+    return { reading, action };
+  }
+
+  if (evt.includes("DETECTED")) {
+    reading = "A potential structural event is detected, but not fully confirmed.";
+    action = "Stay in watch mode and wait for confirmation.";
+    return { reading, action };
+  }
+
+  if (liq === "bearish" && (vol === "down" || vol === "flat") && (der === "DELEVERAGING" || der === "BEARISH")) {
+    reading = "Sellers dominate, momentum is fading, and positioning is risk-off.";
+    action = "Avoid forcing entries and wait for a clean reclaim or confirmed break setup.";
+    return { reading, action };
+  }
+
+  if (liq === "bullish" && (vol === "up" || vol === "flat") && (der === "BULLISH" || der === "NEUTRAL")) {
+    reading = "Buy-side conditions are supportive with stable to improving momentum.";
+    action = "Prioritize long scenarios only if gate and trigger conditions align.";
+    return { reading, action };
+  }
+
+  if (der === "DELEVERAGING") {
+    reading = "Open interest is contracting, which usually means weaker conviction.";
+    action = "Reduce aggressiveness and wait for cleaner directional confirmation.";
+    return { reading, action };
+  }
+
+  return { reading, action };
+}
+
 function buildStatusActionLine(status, currentAction, criticalLevel) {
   if (status === "SETUP ACTIVE" && currentAction === "LONG ACTIVE") return "execute LONG plan";
   if (status === "SETUP ACTIVE" && currentAction === "SHORT ACTIVE") return "execute SHORT plan";
   if (status === "AVOID") return "avoid entries until conditions improve";
   if (status === "NO SETUP") return "stand by, no setup active";
-  if (currentAction === "WATCH") return `wait for trigger at ${fmtLevel(criticalLevel)} USDC`;
+  if (currentAction === "WATCH") return `wait for trigger at ${fmtPriceAdaptive(criticalLevel, "--")} ${quoteCurrency}`;
   return "wait";
 }
 
@@ -234,6 +442,17 @@ function computeRR(entry, stop, target) {
   const reward = Math.abs(Number(target) - Number(entry));
   if (reward < 0) return null;
   return reward / risk;
+}
+
+function setupDeltaText(entry, stop, target) {
+  if (!hasNumber(entry) || !hasNumber(stop) || !hasNumber(target) || Number(entry) === 0) {
+    return "Stop distance: pending | Target distance: pending";
+  }
+  const stopAbs = Math.abs(Number(entry) - Number(stop));
+  const targetAbs = Math.abs(Number(target) - Number(entry));
+  const stopPct = (stopAbs / Math.abs(Number(entry))) * 100;
+  const targetPct = (targetAbs / Math.abs(Number(entry))) * 100;
+  return `Stop distance: ${fmtPriceAdaptive(stopAbs, "--")} (${fmt(stopPct)}%) | Target distance: ${fmtPriceAdaptive(targetAbs, "--")} (${fmt(targetPct)}%)`;
 }
 
 function clampPct(n) {
@@ -357,11 +576,49 @@ function applyScannerFilter(rows) {
   if (scannerFilter === "open") {
     return rows.filter((row) => row.gate_open);
   }
+  if (scannerFilter === "active") {
+    return rows.filter((row) => row.action === "LONG ACTIVE" || row.action === "SHORT ACTIVE");
+  }
+  if (scannerFilter === "watch") {
+    return rows.filter((row) => row.action === "WATCH");
+  }
+  if (scannerFilter === "movers") {
+    return rows.filter((row) => hasNumber(row.change_24h_pct) && Math.abs(Number(row.change_24h_pct)) >= 2.0);
+  }
+  if (scannerFilter === "liquid") {
+    return rows.filter((row) => hasNumber(row.volume_usd) && Number(row.volume_usd) >= 100_000_000);
+  }
+  if (scannerFilter === "tight") {
+    return rows.filter((row) => hasNumber(row.spread_pct) && Number(row.spread_pct) <= 0.06);
+  }
+  if (scannerFilter === "fresh") {
+    return rows.filter((row) => hasNumber(row.freshness_sec) && Number(row.freshness_sec) <= 45);
+  }
   return rows;
+}
+
+function applyScannerSort(rows) {
+  const sorted = [...rows];
+  sorted.sort((a, b) => {
+    const n = (v, d = 0) => (hasNumber(v) ? Number(v) : d);
+    const s = (v) => String(v || "");
+    if (scannerSort === "engine_score_desc") return n(b.score, -1) - n(a.score, -1);
+    if (scannerSort === "volume_desc") return n(b.volume_usd, -1) - n(a.volume_usd, -1);
+    if (scannerSort === "move_abs_desc") return Math.abs(n(b.change_24h_pct, 0)) - Math.abs(n(a.change_24h_pct, 0));
+    if (scannerSort === "spread_asc") return n(a.spread_pct, 999) - n(b.spread_pct, 999);
+    if (scannerSort === "freshness_asc") return n(a.freshness_sec, 999999) - n(b.freshness_sec, 999999);
+    if (scannerSort === "symbol_asc") return s(a.symbol).localeCompare(s(b.symbol));
+    if (scannerSort === "symbol_desc") return s(b.symbol).localeCompare(s(a.symbol));
+    return n(b.opportunity_score, -1) - n(a.opportunity_score, -1);
+  });
+  return sorted;
 }
 
 function renderScanner(data) {
   const summary = data?.summary || {};
+  const allRows = data?.rows || [];
+  universeAttention = buildUniverseAttention(allRows);
+  syncAttentionUI();
   setText("scanUniverse", String(summary.universe_size ?? 0));
   setText("scanOpenGates", String(summary.open_gates ?? 0));
   setText("scanInteresting", String(summary.interesting ?? 0));
@@ -369,7 +626,7 @@ function renderScanner(data) {
 
   const list = document.getElementById("scannerList");
   if (!list) return;
-  const rows = applyScannerFilter(data?.rows || []);
+  const rows = applyScannerSort(applyScannerFilter(allRows));
   list.innerHTML = "";
   if (!rows.length) {
     const empty = document.createElement("div");
@@ -431,6 +688,13 @@ function renderScanner(data) {
       range.appendChild(fill);
       card.appendChild(range);
     }
+    const stats = document.createElement("div");
+    stats.className = "scanner-stats";
+    const volumeTxt = hasNumber(row.volume_usd) ? `Vol ${(Number(row.volume_usd) / 1_000_000).toFixed(0)}M` : "Vol --";
+    const spreadTxt = hasNumber(row.spread_pct) ? `Spread ${Number(row.spread_pct).toFixed(2)}%` : "Spread --";
+    const freshTxt = hasNumber(row.freshness_sec) ? `Fresh ${Number(row.freshness_sec)}s` : "Fresh --";
+    stats.textContent = `${volumeTxt} | ${spreadTxt} | ${freshTxt}`;
+    card.appendChild(stats);
     card.appendChild(meta);
     card.addEventListener("click", async () => {
       setSelectedSymbol(row.symbol);
@@ -569,6 +833,12 @@ function render(brief) {
   setNextRefresh(now);
   updateRefreshProgress();
   setText("headerPair", `${brief.symbol} | ${brief.exchange}`);
+  if (brief.symbol && String(brief.symbol).includes("/")) {
+    const parts = String(brief.symbol).split("/");
+    quoteCurrency = parts[1] || "USDC";
+  } else {
+    quoteCurrency = "USDC";
+  }
 
   setText("price", fmtUsdcCompact(brief.price, "waiting for data"));
   const biasReasonRaw = compactContext(brief.market_bias?.reason ?? "pending");
@@ -669,6 +939,8 @@ function render(brief) {
   setText("shortEntry", fmtUsdcCompact(brief.setups?.short?.entry, "pending"));
   setText("shortStop", fmtUsdcCompact(brief.setups?.short?.stop, "pending"));
   setText("shortTarget", fmtUsdcCompact(brief.setups?.short?.target, "pending"));
+  setText("longDelta", setupDeltaText(brief.setups?.long?.entry, brief.setups?.long?.stop, brief.setups?.long?.target));
+  setText("shortDelta", setupDeltaText(brief.setups?.short?.entry, brief.setups?.short?.stop, brief.setups?.short?.target));
   const longRR = computeRR(brief.setups?.long?.entry, brief.setups?.long?.stop, brief.setups?.long?.target);
   const shortRR = computeRR(brief.setups?.short?.entry, brief.setups?.short?.stop, brief.setups?.short?.target);
   setText("longRR", hasNumber(longRR) ? longRR.toFixed(2) : "pending");
@@ -727,6 +999,9 @@ function render(brief) {
 
   const levelEvent = deriveLevelEventBadge(brief);
   setBadge("marketLevelEventBadge", levelEvent.label, levelEvent.tone);
+  const marketSummary = buildMarketSummary(liquidityRaw, volRaw, derivativesState, levelEvent.label);
+  setText("marketSummaryReading", `Reading: ${marketSummary.reading}`);
+  setText("marketSummaryAction", `Now: ${marketSummary.action}`);
 
   setText("execPosUsd", hasNumber(brief.position_size?.usdc) ? `${fmt(brief.position_size.usdc)} USDC` : "--");
   setText("execRisk", hasNumber(brief.position_size?.risk_per_trade) ? `${fmt(brief.position_size.risk_per_trade)} USDC` : "--");
@@ -800,6 +1075,7 @@ function render(brief) {
   else if (!Boolean(brief.setup_score?.trade_gate) && Number(scoreValue ?? 0) < 6) status = "NO SETUP";
   const statusAction = buildStatusActionLine(status, action, brief.critical_level);
   setStatus(status, contextReason, statusAction);
+  updateAttentionUI(action, status, Boolean(gateOpen), brief.symbol || selectedSymbol);
 
   if (soundEnabled && shouldAlert(brief)) {
     const sig = buildAlertSignature(brief);
@@ -896,4 +1172,12 @@ fetchConfig().then((cfg) => {
 });
 
 initSoundToggle();
+initNotifyToggle();
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) {
+    unreadEvents = 0;
+    if (universeAttention || currentPairAttention) syncAttentionUI();
+    else document.title = BASE_TITLE;
+  }
+});
 

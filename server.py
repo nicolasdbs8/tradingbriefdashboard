@@ -491,6 +491,10 @@ def get_brief(symbol: Optional[str] = None) -> JSONResponse:
 
 @app.get("/api/scanner/list")
 def get_scanner_list() -> JSONResponse:
+    try:
+        _refresh_scanner_fast(force=False)
+    except Exception as exc:
+        logging.warning("Scanner fast refresh on list failed: %s", exc)
     symbols = _ensure_universe()
     with _lock:
         briefs = dict(_cache["briefs"])
@@ -498,23 +502,34 @@ def get_scanner_list() -> JSONResponse:
     rows = []
     for symbol in symbols:
         payload = briefs.get(symbol)
+        fast_row = fast_rows.get(symbol)
         if payload:
-            rows.append(_scanner_row(symbol, payload))
-        else:
-            fast_row = fast_rows.get(symbol)
+            detailed = _scanner_row(symbol, payload)
             if fast_row:
-                row = dict(fast_row)
-                if row.get("updated_at"):
-                    row["freshness_sec"] = max(0, int(time.time() - float(row["updated_at"])))
-                rows.append(row)
+                # Keep detailed decision fields while preserving fast scanner metrics.
+                merged = {**fast_row, **detailed}
+                merged["fast_mode"] = False
+                rows.append(merged)
             else:
-                rows.append(_scanner_row(symbol, None))
+                rows.append(detailed)
+            continue
+        if fast_row:
+            row = dict(fast_row)
+            if row.get("updated_at"):
+                row["freshness_sec"] = max(0, int(time.time() - float(row["updated_at"])))
+            rows.append(row)
+        else:
+            rows.append(_scanner_row(symbol, None))
     rows.sort(key=_scanner_sort_key)
     return JSONResponse({"rows": rows, "summary": _scanner_summary(rows)})
 
 
 @app.get("/api/scanner/summary")
 def get_scanner_summary() -> JSONResponse:
+    try:
+        _refresh_scanner_fast(force=False)
+    except Exception as exc:
+        logging.warning("Scanner fast refresh on summary failed: %s", exc)
     symbols = _ensure_universe()
     with _lock:
         briefs = dict(_cache["briefs"])
