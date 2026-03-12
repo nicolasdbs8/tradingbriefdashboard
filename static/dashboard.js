@@ -501,6 +501,31 @@ function humanizeBlockedReason(reason) {
   return parts.join(" | ");
 }
 
+function buildCostHint(reason, costReason, estimatedCostPct, stopDistancePct) {
+  const txt = [String(reason || ""), String(costReason || "")].join(" ; ");
+  const ratioMatch = txt.match(/cost\/stop\s+([0-9.]+)\s*>\s*([0-9.]+)/i);
+  if (ratioMatch) {
+    const ratio = Number(ratioMatch[1]);
+    const threshold = Number(ratioMatch[2]);
+    return `Cost ratio: ${ratio.toFixed(2)} / ${threshold.toFixed(2)} (BLOCK)`;
+  }
+  const rrMatch = txt.match(/rr_net\s+([0-9.]+)\s*<\s*([0-9.]+)/i);
+  if (rrMatch) {
+    const rr = Number(rrMatch[1]);
+    const min = Number(rrMatch[2]);
+    return `Net R/R: ${rr.toFixed(2)} / ${min.toFixed(2)} (LOW)`;
+  }
+  if (hasNumber(estimatedCostPct) && hasNumber(stopDistancePct) && Number(stopDistancePct) > 0) {
+    const ratio = Number(estimatedCostPct) / Number(stopDistancePct);
+    const status = ratio > 0.35 ? "HIGH" : ratio > 0.28 ? "WARN" : "OK";
+    return `Cost ratio: ${ratio.toFixed(2)} (${status})`;
+  }
+  if (/cost_fail/i.test(txt) || /cost\/stop/i.test(txt)) {
+    return "Cost ratio: above threshold";
+  }
+  return "Cost filter: not limiting";
+}
+
 function syncTpDetails(gateOpen, activeSetup) {
   const longDetails = document.getElementById("longTpDetails");
   const shortDetails = document.getElementById("shortTpDetails");
@@ -1025,7 +1050,10 @@ function render(brief) {
     brief.trade?.cost_pct ??
     brief.trade?.filters?.estimated_cost_pct ??
     brief.trade?.filters?.cost_pct;
+  const costReason = brief.trade?.filters?.cost_reason;
+  const stopDistancePct = hasNumber(brief.trade?.stop_distance_pct) ? Number(brief.trade.stop_distance_pct) : null;
   setText("execCost", hasNumber(estimatedCostPct) ? `${fmt(estimatedCostPct)}%` : "pending");
+  setText("setupCostHint", buildCostHint(gateReason, costReason, estimatedCostPct, stopDistancePct));
   const gateIsOpen = Boolean(gateOpen);
   const stopLine = document.getElementById("execStopLine");
   const entryLine = document.getElementById("execEntryLine");

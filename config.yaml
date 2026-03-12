@@ -77,12 +77,12 @@ setup:
     intraday:
       entry_mode: retest
       retest_buffer_atr: 0.1
-      stop_atr_mult: 0.5
+      stop_atr_mult: 0.7
       target_timeframe: 4h
     scalp:
       entry_mode: retest
       retest_buffer_atr: 0.05
-      stop_atr_mult: 0.35
+      stop_atr_mult: 0.5
       target_timeframe: 1h
     swing:
       entry_mode: retest
@@ -115,7 +115,7 @@ execution:
 
 filters:
   max_cost_to_stop_ratio: 0.35
-  min_rr_net: 1.6
+  min_rr_net: 1.4
   cost_gate:
     enabled: true
   vwap_gate:

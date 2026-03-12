@@ -657,6 +657,13 @@ button {
   color: #f6c6c6;
 }
 
+.setup-cost-hint {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #9fb2c6;
+  opacity: 0.92;
+}
+
 .setup-meta-label {
   font-size: 11px;
   letter-spacing: 0.08em;
