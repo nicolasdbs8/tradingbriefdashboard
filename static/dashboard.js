@@ -476,6 +476,7 @@ function humanizeBlockedReason(reason) {
   const txt = String(reason).trim();
   const map = {
     cost_fail: "Costs too high vs stop distance",
+    cost_warn: "Costs elevated vs stop distance",
     vwap_mismatch: "VWAP condition not met",
     probability_below_threshold: "Directional probability below threshold",
     probability_below_heads_up_threshold: "Heads-up probability below threshold",
@@ -485,15 +486,17 @@ function humanizeBlockedReason(reason) {
     no_active_setup: "No active setup",
     no_active_event: "No active level event",
   };
-  if (txt.startsWith("cost_fail:")) {
-    const detail = txt.slice("cost_fail:".length).trim();
+  if (txt.startsWith("cost_fail:") || txt.startsWith("cost_warn:")) {
+    const prefix = txt.startsWith("cost_warn:") ? "cost_warn:" : "cost_fail:";
+    const detail = txt.slice(prefix.length).trim();
     return `Costs too high vs stop distance (${detail || "details pending"})`;
   }
   if (map[txt]) return map[txt];
   const parts = txt.split(";").map((part) => {
     const p = part.trim();
-    if (p.startsWith("cost_fail:")) {
-      const detail = p.slice("cost_fail:".length).trim();
+    if (p.startsWith("cost_fail:") || p.startsWith("cost_warn:")) {
+      const prefix = p.startsWith("cost_warn:") ? "cost_warn:" : "cost_fail:";
+      const detail = p.slice(prefix.length).trim();
       return `Costs too high vs stop distance (${detail || "details pending"})`;
     }
     return map[p] || p;
@@ -507,7 +510,8 @@ function buildCostHint(reason, costReason, estimatedCostPct, stopDistancePct) {
   if (ratioMatch) {
     const ratio = Number(ratioMatch[1]);
     const threshold = Number(ratioMatch[2]);
-    return `Cost ratio: ${ratio.toFixed(2)} / ${threshold.toFixed(2)} (BLOCK)`;
+    const status = ratio > threshold ? "WARN" : "OK";
+    return `Cost ratio: ${ratio.toFixed(2)} / ${threshold.toFixed(2)} (${status})`;
   }
   const rrMatch = txt.match(/rr_net\s+([0-9.]+)\s*<\s*([0-9.]+)/i);
   if (rrMatch) {
@@ -520,7 +524,7 @@ function buildCostHint(reason, costReason, estimatedCostPct, stopDistancePct) {
     const status = ratio > 0.35 ? "HIGH" : ratio > 0.28 ? "WARN" : "OK";
     return `Cost ratio: ${ratio.toFixed(2)} (${status})`;
   }
-  if (/cost_fail/i.test(txt) || /cost\/stop/i.test(txt)) {
+  if (/cost_fail/i.test(txt) || /cost_warn/i.test(txt) || /cost\/stop/i.test(txt)) {
     return "Cost ratio: above threshold";
   }
   return "Cost filter: not limiting";
@@ -724,7 +728,7 @@ function renderScanner(data) {
     card.appendChild(meta);
     card.addEventListener("click", async () => {
       setSelectedSymbol(row.symbol);
-      await refresh();
+      await refresh(true);
       await refreshScanner();
     });
     list.appendChild(card);
@@ -1141,7 +1145,14 @@ function render(brief) {
   }
 }
 
-async function refresh() {
+async function refresh(forceServerRecalc = false) {
+  if (forceServerRecalc) {
+    await fetch("/api/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ symbol: selectedSymbol }),
+    });
+  }
   const brief = await fetchBrief(selectedSymbol);
   render(brief);
   if (brief?.symbol) {
@@ -1153,7 +1164,7 @@ function setupDetailRefreshTimer() {
   if (detailRefreshTimer) clearInterval(detailRefreshTimer);
   const ms = Math.max(60, Number(refreshIntervalSec || 300)) * 1000;
   detailRefreshTimer = setInterval(() => {
-    refresh();
+    refresh(true);
   }, ms);
 }
 
@@ -1162,12 +1173,7 @@ document.getElementById("refreshNow").addEventListener("click", async () => {
   btn.disabled = true;
   const old = btn.textContent;
   btn.textContent = "Refreshing...";
-  await fetch("/api/refresh", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ symbol: selectedSymbol }),
-  });
-  await refresh();
+  await refresh(true);
   await refreshScanner();
   const now = new Date();
   setText("lastUpdate", `Last update: ${now.toISOString().slice(11, 16)} UTC`);
