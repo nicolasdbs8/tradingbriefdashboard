@@ -40,7 +40,7 @@ def passes_cost_filter(
     cost = round_trip_cost_rate(costs)
     ratio = cost / stop_distance_rate if stop_distance_rate > 0 else 999.0
     if ratio > max_cost_to_stop_ratio:
-        return False, f"cost/stop {ratio:,.2f} > {max_cost_to_stop_ratio:,.2f}"
+        return False, f"cost/stop {ratio:,.3f} > {max_cost_to_stop_ratio:,.3f}"
     if rr_net < min_rr_net:
-        return False, f"rr_net {rr_net:,.2f} < {min_rr_net:,.2f}"
+        return False, f"rr_net {rr_net:,.3f} < {min_rr_net:,.3f}"
     return True, "pass"

@@ -10,6 +10,9 @@ let selectedSymbol = localStorage.getItem("selectedSymbol") || "BTC/USDC";
 let scannerFilter = "all";
 let scannerSort = localStorage.getItem("scannerSort") || "opportunity_desc";
 let quoteCurrency = "USDC";
+let latestModelPrice = null;
+let latestLivePrice = null;
+let latestLiveUpdatedAt = null;
 let currentPairAttention = null;
 let universeAttention = null;
 let lastAttentionState = null;
@@ -222,8 +225,10 @@ function buildUniverseAttention(rows) {
 }
 
 async function fetchBrief(symbol = null) {
-  const query = symbol ? `?symbol=${encodeURIComponent(symbol)}` : "";
-  const res = await fetch(`/api/brief${query}`);
+  const params = new URLSearchParams();
+  if (symbol) params.set("symbol", symbol);
+  params.set("_ts", String(Date.now()));
+  const res = await fetch(`/api/brief?${params.toString()}`, { cache: "no-store" });
   return res.json();
 }
 
@@ -233,7 +238,7 @@ async function fetchConfig() {
 }
 
 async function fetchScannerList() {
-  const res = await fetch("/api/scanner/list");
+  const res = await fetch(`/api/scanner/list?_ts=${Date.now()}`, { cache: "no-store" });
   return res.json();
 }
 
@@ -303,9 +308,27 @@ function fmtPriceAdaptive(n, fallback = "pending") {
   return v.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
 
+function fmtPriceForPriceCard(n, fallback = "pending") {
+  if (!hasNumber(n)) return fallback;
+  const v = Number(n);
+  const abs = Math.abs(v);
+  let decimals = 2;
+  if (abs >= 1000) decimals = 2;
+  else if (abs >= 1) decimals = 3;
+  else if (abs >= 0.1) decimals = 4;
+  else if (abs >= 0.01) decimals = 5;
+  else decimals = 6;
+  return v.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+}
+
 function fmtUsdcCompact(n, fallback = "pending") {
   if (!hasNumber(n)) return fallback;
   return `${fmtPriceAdaptive(n)} ${quoteCurrency}`;
+}
+
+function fmtUsdcPriceCard(n, fallback = "pending") {
+  if (!hasNumber(n)) return fallback;
+  return `${fmtPriceForPriceCard(n)} ${quoteCurrency}`;
 }
 
 function fmtOr(n, fallback = "--") {
@@ -369,7 +392,7 @@ function deriveLevelEventBadge(brief) {
   return { label: "NONE", tone: "gray" };
 }
 
-function buildMarketSummary(liquidityRaw, volRaw, derivativesState, levelEventLabel) {
+function buildMarketSummary(liquidityRaw, volRaw, derivativesState, levelEventLabel, longProbPct, shortProbPct) {
   const liq = String(liquidityRaw || "pending").toLowerCase();
   const vol = String(volRaw || "pending").toLowerCase();
   const der = String(derivativesState || "pending").toUpperCase();
@@ -399,6 +422,10 @@ function buildMarketSummary(liquidityRaw, volRaw, derivativesState, levelEventLa
   if (liq === "bullish" && (vol === "up" || vol === "flat") && (der === "BULLISH" || der === "NEUTRAL")) {
     reading = "Buy-side conditions are supportive with stable to improving momentum.";
     action = "Prioritize long scenarios only if gate and trigger conditions align.";
+    if (hasNumber(longProbPct) && hasNumber(shortProbPct) && Number(shortProbPct) - Number(longProbPct) >= 15) {
+      reading = "Context looks supportive, but directional probability currently favors SHORT.";
+      action = "Treat long bias as conditional and wait for stronger long confirmation.";
+    }
     return { reading, action };
   }
 
@@ -504,7 +531,28 @@ function humanizeBlockedReason(reason) {
   return parts.join(" | ");
 }
 
-function buildCostHint(reason, costReason, estimatedCostPct, stopDistancePct) {
+function buildCostHint(brief, reason, costReason, estimatedCostPct, stopDistancePct) {
+  const filters = brief?.trade?.filters || {};
+  const ratioL = hasNumber(filters.cost_ratio_long) ? Number(filters.cost_ratio_long) : null;
+  const ratioS = hasNumber(filters.cost_ratio_short) ? Number(filters.cost_ratio_short) : null;
+  const threshold = hasNumber(filters.cost_ratio_threshold) ? Number(filters.cost_ratio_threshold) : null;
+  const activeSetup = String(brief?.trade?.active_setup || "NONE");
+  if ((ratioL !== null || ratioS !== null) && threshold !== null) {
+    const statusOf = (ratio) => {
+      if (ratio === null) return "--";
+      if (ratio > Math.max(1.0, threshold * 2)) return "BAD";
+      if (ratio > threshold) return "WARN";
+      return "OK";
+    };
+    const longStatus = statusOf(ratioL);
+    const shortStatus = statusOf(ratioS);
+    const longTxt = ratioL !== null ? `${ratioL.toFixed(2)} ${longStatus}` : "--";
+    const shortTxt = ratioS !== null ? `${ratioS.toFixed(2)} ${shortStatus}` : "--";
+    if (activeSetup === "LONG" || activeSetup === "SHORT") {
+      return `Cost L/S: ${longTxt} | ${shortTxt} (thr ${threshold.toFixed(2)}) • active ${activeSetup}`;
+    }
+    return `Cost L/S: ${longTxt} | ${shortTxt} (thr ${threshold.toFixed(2)})`;
+  }
   const txt = [String(reason || ""), String(costReason || "")].join(" ; ");
   const ratioMatch = txt.match(/cost\/stop\s+([0-9.]+)\s*>\s*([0-9.]+)/i);
   if (ratioMatch) {
@@ -653,6 +701,25 @@ function renderScanner(data) {
   setText("scanOpenGates", String(summary.open_gates ?? 0));
   setText("scanInteresting", String(summary.interesting ?? 0));
   setText("scanActiveSetups", String(summary.active_setups ?? 0));
+  const selectedRow = allRows.find((row) => row.symbol === selectedSymbol);
+  const livePrice = hasNumber(selectedRow?.live_price) ? selectedRow?.live_price : latestLivePrice;
+  if (hasNumber(livePrice)) {
+    let deltaSuffix = "";
+    if (hasNumber(latestModelPrice) && Number(latestModelPrice) !== 0) {
+      const deltaPct = ((Number(livePrice) - Number(latestModelPrice)) / Number(latestModelPrice)) * 100;
+      const sign = deltaPct >= 0 ? "+" : "";
+      if (Math.abs(deltaPct) >= 0.01) {
+        deltaSuffix = ` (${sign}${deltaPct.toFixed(2)}%)`;
+      } else if (Math.abs(deltaPct) > 0) {
+        deltaSuffix = ` (${sign}${(deltaPct * 100).toFixed(1)} bps)`;
+      } else {
+        deltaSuffix = " (unchanged)";
+      }
+    }
+    setText("priceLive", `Live: ${fmtUsdcPriceCard(livePrice)}${deltaSuffix}`);
+  } else {
+    setText("priceLive", "Live: unavailable");
+  }
 
   const list = document.getElementById("scannerList");
   if (!list) return;
@@ -677,7 +744,11 @@ function renderScanner(data) {
     symbol.textContent = row.symbol || "N/A";
     const badge = document.createElement("span");
     badge.className = `badge ${symbolBadgeTone(row)}`;
-    badge.textContent = row.action || row.status || "PENDING";
+    if (row.fast_mode) {
+      badge.textContent = String(row.opportunity_label || "SCAN").replace("POTENTIAL ", "SCAN ");
+    } else {
+      badge.textContent = row.action || row.status || "PENDING";
+    }
     top.appendChild(symbol);
     top.appendChild(badge);
 
@@ -870,12 +941,16 @@ function render(brief) {
     quoteCurrency = "USDC";
   }
 
-  setText("price", fmtUsdcCompact(brief.price, "waiting for data"));
+  latestModelPrice = brief.price;
+  latestLivePrice = hasNumber(brief.live_price) ? brief.live_price : null;
+  latestLiveUpdatedAt = hasNumber(brief.live_updated_at) ? brief.live_updated_at : null;
+  setText("price", fmtUsdcPriceCard(brief.price, "waiting for data"));
   const biasReasonRaw = compactContext(brief.market_bias?.reason ?? "pending");
   const biasMain = biasReasonRaw.toUpperCase();
   const biasKind = brief.market_bias?.bias ?? "PENDING";
   setText("marketBias", biasMain);
   setText("marketBiasSub", `Bias type: ${biasKind}`);
+  setText("priceSub", "Model price (15m close)");
   setText("criticalLevel", fmtUsdcCompact(brief.critical_level, "not available"));
   setText("criticalLevelDist", `Distance: ${fmtSignedPct(brief.critical_level_distance_pct)}`);
   setText("criticalLevelType", `Trigger type: ${deriveTriggerType(brief.critical_level_distance_pct)}`);
@@ -1032,7 +1107,16 @@ function render(brief) {
 
   const levelEvent = deriveLevelEventBadge(brief);
   setBadge("marketLevelEventBadge", levelEvent.label, levelEvent.tone);
-  const marketSummary = buildMarketSummary(liquidityRaw, volRaw, derivativesState, levelEvent.label);
+  const longProbPct = brief.directional_probability?.long_probability_pct;
+  const shortProbPct = brief.directional_probability?.short_probability_pct;
+  const marketSummary = buildMarketSummary(
+    liquidityRaw,
+    volRaw,
+    derivativesState,
+    levelEvent.label,
+    longProbPct,
+    shortProbPct
+  );
   setText("marketSummaryReading", `Reading: ${marketSummary.reading}`);
   setText("marketSummaryAction", `Now: ${marketSummary.action}`);
 
@@ -1057,7 +1141,7 @@ function render(brief) {
   const costReason = brief.trade?.filters?.cost_reason;
   const stopDistancePct = hasNumber(brief.trade?.stop_distance_pct) ? Number(brief.trade.stop_distance_pct) : null;
   setText("execCost", hasNumber(estimatedCostPct) ? `${fmt(estimatedCostPct)}%` : "pending");
-  setText("setupCostHint", buildCostHint(gateReason, costReason, estimatedCostPct, stopDistancePct));
+  setText("setupCostHint", buildCostHint(brief, gateReason, costReason, estimatedCostPct, stopDistancePct));
   const gateIsOpen = Boolean(gateOpen);
   const stopLine = document.getElementById("execStopLine");
   const entryLine = document.getElementById("execEntryLine");

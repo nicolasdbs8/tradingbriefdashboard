@@ -598,6 +598,7 @@ def format_brief(report: BriefReport) -> str:
     trade_gate = False
     trade_gate_reason = "setup_score below threshold"
     trade_gate_failures: list[str] = []
+    trade_gate_warnings: list[str] = []
     if final_score >= 6:
         if location_score >= 1 and liquidity_score >= 1 and (trend_score >= 1 or prob_max >= 55):
             trade_gate = True
@@ -605,7 +606,7 @@ def format_brief(report: BriefReport) -> str:
         else:
             trade_gate_reason = "failed location/liquidity or trend/probability checks"
     if trade_gate and not cost_gate_pass:
-        trade_gate_failures.append(f"cost_warn:{cost_reason}")
+        trade_gate_warnings.append(f"cost_warn:{cost_reason}")
     if trade_gate and not vwap_pass:
         trade_gate = False
         trade_gate_failures.append("vwap_mismatch")
@@ -620,6 +621,8 @@ def format_brief(report: BriefReport) -> str:
         trade_gate_failures.append("inversion_not_confirmed_2bars")
     if trade_gate_failures:
         trade_gate_reason = "; ".join(trade_gate_failures)
+    elif trade_gate_warnings:
+        trade_gate_reason = "passed with warnings"
     elif trade_gate and level_source_bonus > 0:
         trade_gate_reason = f"{trade_gate_reason}; level_source_bonus={level_source_bonus:,.1f} ({level_source})"
 
@@ -1004,6 +1007,8 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
         target = h1.price + h1.atr * 2.0
 
     stop_distance_rate = abs(entry - stop) / entry if entry != 0 else 0.0
+    long_stop_distance_rate = abs(long_entry - long_stop) / long_entry if long_entry != 0 else 0.0
+    short_stop_distance_rate = abs(short_entry - short_stop) / short_entry if short_entry != 0 else 0.0
     effective_stop_rate = effective_stop_distance_rate(stop_distance_rate, report.costs)
     size_usd = report.capital.risk_per_trade_usd / effective_stop_rate if effective_stop_rate > 0 else 0.0
     position_size = size_usd / entry if entry != 0 else 0.0
@@ -1111,9 +1116,21 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
         and (active_event != "break" or short_inversion_confirmed)
     )
     cost_gate_pass = (not report.cost_gate_enabled) or cost_pass
+    round_trip_cost_pct = round_trip_cost_rate(report.costs) * 100
+    cost_ratio_long = (
+        round_trip_cost_rate(report.costs) / long_stop_distance_rate
+        if long_stop_distance_rate > 0
+        else None
+    )
+    cost_ratio_short = (
+        round_trip_cost_rate(report.costs) / short_stop_distance_rate
+        if short_stop_distance_rate > 0
+        else None
+    )
     trade_gate = False
     trade_gate_reason = "setup_score below threshold"
     trade_gate_failures: list[str] = []
+    trade_gate_warnings: list[str] = []
     if final_score >= 6:
         if location_score >= 1 and liquidity_score >= 1 and (trend_score >= 1 or prob_max >= 55):
             trade_gate = True
@@ -1121,7 +1138,7 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
         else:
             trade_gate_reason = "failed location/liquidity or trend/probability checks"
     if trade_gate and not cost_gate_pass:
-        trade_gate_failures.append(f"cost_warn:{cost_reason}")
+        trade_gate_warnings.append(f"cost_warn:{cost_reason}")
     if trade_gate and not vwap_pass:
         trade_gate = False
         trade_gate_failures.append("vwap_mismatch")
@@ -1136,6 +1153,8 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
         trade_gate_failures.append("inversion_not_confirmed_2bars")
     if trade_gate_failures:
         trade_gate_reason = "; ".join(trade_gate_failures)
+    elif trade_gate_warnings:
+        trade_gate_reason = "passed with warnings"
     elif trade_gate and level_source_bonus > 0:
         trade_gate_reason = f"{trade_gate_reason}; level_source_bonus={level_source_bonus:,.1f} ({level_source})"
     active_setup = "NONE"
@@ -1260,6 +1279,12 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
             "filters": {
                 "cost_pass": cost_gate_pass,
                 "cost_reason": cost_reason,
+                "cost_ratio_threshold": report.max_cost_to_stop_ratio,
+                "cost_ratio_long": cost_ratio_long,
+                "cost_ratio_short": cost_ratio_short,
+                "cost_round_trip_pct": round_trip_cost_pct,
+                "stop_distance_long_pct": (long_stop_distance_rate * 100) if long_stop_distance_rate > 0 else None,
+                "stop_distance_short_pct": (short_stop_distance_rate * 100) if short_stop_distance_rate > 0 else None,
                 "vwap_pass": vwap_pass,
                 "probability_pass": probability_pass,
                 "probability_max": prob_max,
@@ -1275,6 +1300,7 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
                 "long_inversion_confirmed": long_inversion_confirmed,
                 "short_inversion_confirmed": short_inversion_confirmed,
                 "trade_gate_failures": trade_gate_failures,
+                "trade_gate_warnings": trade_gate_warnings,
             },
         },
         "level_event": {

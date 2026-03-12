@@ -305,6 +305,23 @@ def _refresh_scanner_fast(force: bool = False) -> None:
         _cache["last_scanner_fast_refresh"] = now
 
 
+def _fetch_live_ticker(symbol: str) -> Optional[dict]:
+    try:
+        import ccxt
+    except Exception:
+        return None
+    try:
+        ex = ccxt.binance({"enableRateLimit": True, "timeout": 3500})
+        ticker = ex.fetch_ticker(symbol)
+        last = ticker.get("last")
+        if last is None:
+            return None
+        return {"price": float(last), "updated_at": time.time()}
+    except Exception as exc:
+        logging.debug("Live ticker fetch failed for %s: %s", symbol, exc)
+        return None
+
+
 def _ensure_universe(force: bool = False) -> List[str]:
     with _lock:
         symbols = list(_cache.get("scanner_symbols", []))
@@ -486,7 +503,31 @@ def get_brief(symbol: Optional[str] = None) -> JSONResponse:
         payload = _get_or_compute_symbol(target_symbol, set_current=bool(normalized))
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
-    return JSONResponse(payload["data"])
+    data = dict(payload["data"])
+    live_price = None
+    live_updated_at = None
+    try:
+        _refresh_scanner_fast(force=False)
+    except Exception:
+        pass
+    with _lock:
+        fast_rows = dict(_cache.get("scanner_fast_rows", {}))
+    fast_row = fast_rows.get(target_symbol) or {}
+    if fast_row.get("price") is not None:
+        try:
+            live_price = float(fast_row.get("price"))
+            live_updated_at = float(fast_row.get("updated_at") or time.time())
+        except (TypeError, ValueError):
+            live_price = None
+            live_updated_at = None
+    if live_price is None:
+        live = _fetch_live_ticker(target_symbol)
+        if live:
+            live_price = live["price"]
+            live_updated_at = live["updated_at"]
+    data["live_price"] = live_price
+    data["live_updated_at"] = live_updated_at
+    return JSONResponse(data)
 
 
 @app.get("/api/scanner/list")
@@ -509,6 +550,8 @@ def get_scanner_list() -> JSONResponse:
                 # Keep detailed decision fields while preserving fast scanner metrics.
                 merged = {**fast_row, **detailed}
                 merged["fast_mode"] = False
+                merged["live_price"] = fast_row.get("price")
+                merged["live_updated_at"] = fast_row.get("updated_at")
                 rows.append(merged)
             else:
                 rows.append(detailed)
