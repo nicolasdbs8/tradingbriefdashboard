@@ -443,6 +443,8 @@ def format_brief(report: BriefReport) -> str:
     range_high_1h = h1.recent_high or h1.price
     range_low_1h = h1.recent_low or h1.price
     setup_level = report.triggers.get("critical_level", range_low_1h)
+    setup_level_long = report.triggers.get("critical_level_long", setup_level)
+    setup_level_short = report.triggers.get("critical_level_short", setup_level)
     location_1h = _range_location(h1.price, range_low_1h, range_high_1h)
     vwap_dist_pct = _distance_pct(m15.price, m15.vwap)
     target_high, target_low = _select_target_levels(
@@ -453,7 +455,7 @@ def format_brief(report: BriefReport) -> str:
         range_low_4h,
     )
     long_entry, long_stop, long_target = _setup_plan(
-        setup_level,
+        setup_level_long,
         h1.atr,
         "LONG",
         report.setup_entry_mode,
@@ -470,7 +472,7 @@ def format_brief(report: BriefReport) -> str:
         report.costs,
     )
     short_entry, short_stop, short_target = _setup_plan(
-        setup_level,
+        setup_level_short,
         h1.atr,
         "SHORT",
         report.setup_entry_mode,
@@ -808,13 +810,13 @@ def format_brief(report: BriefReport) -> str:
             "",
             "SETUPS",
             "LONG",
-            f"Condition: sweep < {setup_level:,.2f}",
+            f"Condition: sweep < {setup_level_long:,.2f}",
             "Reclaim range",
             "Probability: conditional",
             f"Invalidation: close < {long_stop:,.2f}",
             f"Target: {long_target:,.2f}",
             "SHORT",
-            f"Condition: breakout < {setup_level:,.2f}",
+            f"Condition: breakout < {setup_level_short:,.2f}",
             "Continuation",
             "Probability: conditional",
             f"Invalidation: close > {short_stop:,.2f}",
@@ -944,6 +946,8 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
     range_high_1h = h1.recent_high or h1.price
     range_low_1h = h1.recent_low or h1.price
     setup_level = report.triggers.get("critical_level", range_low_1h)
+    setup_level_long = report.triggers.get("critical_level_long", setup_level)
+    setup_level_short = report.triggers.get("critical_level_short", setup_level)
     liquidity_below_pct = _distance_pct_abs(h1.price, range_low_1h)
     liquidity_above_pct = _distance_pct_abs(range_high_1h, h1.price)
     liquidity_asymmetry = "bearish" if liquidity_below_pct < liquidity_above_pct else "bullish" if liquidity_above_pct < liquidity_below_pct else "balanced"
@@ -955,7 +959,7 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
         h4.recent_low or h4.price,
     )
     long_entry, long_stop, long_target = _setup_plan(
-        setup_level,
+        setup_level_long,
         h1.atr,
         "LONG",
         report.setup_entry_mode,
@@ -972,7 +976,7 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
         report.costs,
     )
     short_entry, short_stop, short_target = _setup_plan(
-        setup_level,
+        setup_level_short,
         h1.atr,
         "SHORT",
         report.setup_entry_mode,
@@ -1198,6 +1202,8 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
             "candles": candles,
             "levels": {
                 "critical": report.triggers.get("critical_level", range_low_1h),
+                "critical_long": report.triggers.get("critical_level_long", report.triggers.get("critical_level", range_low_1h)),
+                "critical_short": report.triggers.get("critical_level_short", report.triggers.get("critical_level", range_low_1h)),
                 "support": major_support,
                 "resistance": major_resistance,
                 "range_low": range_low_1h,
@@ -1238,6 +1244,11 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
         },
         "critical_level": report.triggers.get("critical_level", range_low_1h),
         "critical_level_source": report.triggers.get("critical_level_source", "1h"),
+        "critical_level_long": report.triggers.get("critical_level_long", report.triggers.get("critical_level", range_low_1h)),
+        "critical_level_long_source": report.triggers.get("critical_level_long_source", report.triggers.get("critical_level_source", "1h")),
+        "critical_level_short": report.triggers.get("critical_level_short", report.triggers.get("critical_level", range_low_1h)),
+        "critical_level_short_source": report.triggers.get("critical_level_short_source", report.triggers.get("critical_level_source", "1h")),
+        "critical_regime": report.triggers.get("critical_regime", "range_pullback"),
         "critical_level_distance_pct": _distance_pct(
             report.triggers.get("critical_level", range_low_1h), m15.price
         ),
@@ -1306,6 +1317,11 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
         "level_event": {
             "level": report.triggers.get("critical_level", range_low_1h),
             "level_source": report.triggers.get("critical_level_source", "1h"),
+            "level_long": report.triggers.get("critical_level_long", report.triggers.get("critical_level", range_low_1h)),
+            "level_long_source": report.triggers.get("critical_level_long_source", report.triggers.get("critical_level_source", "1h")),
+            "level_short": report.triggers.get("critical_level_short", report.triggers.get("critical_level", range_low_1h)),
+            "level_short_source": report.triggers.get("critical_level_short_source", report.triggers.get("critical_level_source", "1h")),
+            "critical_regime": report.triggers.get("critical_regime", "range_pullback"),
             "sweep_detected": report.triggers.get("sweep_detected", False),
             "reclaim_confirmed": report.triggers.get("reclaim_confirmed", False),
             "break_confirmed": report.triggers.get("break_confirmed", False),
@@ -1317,13 +1333,13 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
         "mini_chart": mini_chart,
         "setups": {
             "long": {
-                "condition": f"sweep < {setup_level:,.2f}",
+                "condition": f"sweep < {setup_level_long:,.2f}",
                 "target": long_target,
                 "entry": long_entry,
                 "stop": long_stop,
             },
             "short": {
-                "condition": f"breakout < {setup_level:,.2f}",
+                "condition": f"breakout < {setup_level_short:,.2f}",
                 "target": short_target,
                 "entry": short_entry,
                 "stop": short_stop,
