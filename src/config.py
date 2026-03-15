@@ -77,6 +77,12 @@ class Config:
     alerts_heads_up_require_signal_hint: bool
     alerts_heads_up_max_distance_pct: float
     alerts_heads_up_cooldown_minutes: int
+    alerts_gate_open_enabled: bool
+    alerts_gate_open_min_setup_score: float
+    alerts_gate_open_require_no_active_setup: bool
+    alerts_gate_open_require_signal_hint: bool
+    alerts_gate_open_max_distance_pct: float
+    alerts_gate_open_cooldown_minutes: int
 
 
 def _load_setup_preset(data: dict) -> tuple[str, dict]:
@@ -96,6 +102,7 @@ def load_config(path: str | Path) -> Config:
     preset_name, preset_cfg = _load_setup_preset(data)
     alerts_cfg = data.get("alerts", {})
     heads_up_cfg = alerts_cfg.get("heads_up", {})
+    gate_open_cfg = alerts_cfg.get("gate_open", {})
     filters_cfg = data.get("filters", {})
     probability_gate_cfg = filters_cfg.get("probability_gate", {})
     level_source_weight_cfg = filters_cfg.get("level_source_weight", {})
@@ -192,4 +199,10 @@ def load_config(path: str | Path) -> Config:
         alerts_heads_up_require_signal_hint=bool(heads_up_cfg.get("require_signal_hint", True)),
         alerts_heads_up_max_distance_pct=float(heads_up_cfg.get("max_distance_pct", 0.35)),
         alerts_heads_up_cooldown_minutes=int(heads_up_cfg.get("cooldown_minutes", 60)),
+        alerts_gate_open_enabled=bool(gate_open_cfg.get("enabled", False)),
+        alerts_gate_open_min_setup_score=float(gate_open_cfg.get("min_setup_score", 6.5)),
+        alerts_gate_open_require_no_active_setup=bool(gate_open_cfg.get("require_no_active_setup", True)),
+        alerts_gate_open_require_signal_hint=bool(gate_open_cfg.get("require_signal_hint", True)),
+        alerts_gate_open_max_distance_pct=float(gate_open_cfg.get("max_distance_pct", 0.6)),
+        alerts_gate_open_cooldown_minutes=int(gate_open_cfg.get("cooldown_minutes", 120)),
     )

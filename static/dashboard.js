@@ -359,6 +359,29 @@ function fmtLevelQuality(q) {
   return `Q${Number(q.score).toFixed(0)}`;
 }
 
+function levelQualityLabel(q) {
+  if (!q || !hasNumber(q.score)) return "unknown";
+  const s = Number(q.score);
+  if (s >= 80) return "high";
+  if (s >= 65) return "good";
+  if (s >= 50) return "medium";
+  return "low";
+}
+
+function compactRegime(regime) {
+  const raw = String(regime || "range_pullback");
+  if (raw === "bullish_breakout") return "Breakout";
+  if (raw === "range_pullback") return "Pullback";
+  return raw.replace("_", " ");
+}
+
+function compactSrMode(mode) {
+  const raw = String(mode || "config");
+  if (raw === "manual_override") return "Manual SR";
+  if (raw === "auto_generated") return "Auto SR";
+  return "";
+}
+
 function compactContext(reason) {
   if (!reason) return "pending";
   return String(reason)
@@ -945,9 +968,9 @@ function clearLevelLines() {
   levelLines = [];
 }
 
-function addLevelLine(price, color, title) {
+function addLevelLine(price, color, title, lineWidth = 1, lineStyle = 2) {
   if (!candleSeries || !hasNumber(price)) return;
-  const line = candleSeries.createPriceLine({ price, color, lineWidth: 1, lineStyle: 2, title });
+  const line = candleSeries.createPriceLine({ price, color, lineWidth, lineStyle, title });
   levelLines.push(line);
 }
 
@@ -982,17 +1005,20 @@ function render(brief) {
   setText("marketBiasSub", `Bias type: ${biasKind}`);
   setText("priceSub", "Model price (15m close)");
   setText("criticalLevel", fmtUsdcCompact(brief.critical_level, "not available"));
-  setText("criticalLevelDist", `Distance: ${fmtSignedPct(brief.critical_level_distance_pct)}`);
-  setText("criticalLevelType", `Trigger type: ${deriveTriggerType(brief.critical_level_distance_pct)}`);
+  setText("criticalLevelDist", `${fmtSignedPct(brief.critical_level_distance_pct)} from price`);
+  setText("criticalLevelType", `${deriveTriggerType(brief.critical_level_distance_pct)} setup`);
   const srSourceRaw = String(brief.sr_levels_source || "config");
-  const srMode =
-    srSourceRaw === "manual_override" ? "MANUAL" : srSourceRaw === "auto_generated" ? "AUTO" : "CONFIG";
+  const srMode = compactSrMode(srSourceRaw);
   const levelQuality = fmtLevelQuality(brief.critical_level_quality);
-  const regime = String(brief.critical_regime || "range_pullback").replace("_", " ").toUpperCase();
-  setText(
-    "criticalLevelSource",
-    `Source: ${String(brief.critical_level_source ?? "1h").toUpperCase()} | ${srMode} | ${levelQuality} | ${regime}`
-  );
+  const levelQualityTxt = levelQualityLabel(brief.critical_level_quality).toUpperCase();
+  const regime = compactRegime(brief.critical_regime);
+  const sourceParts = [
+    `Src ${String(brief.critical_level_source ?? "1h").toUpperCase()}`,
+    `${levelQuality} ${levelQualityTxt}`,
+    regime,
+  ];
+  if (srMode) sourceParts.push(srMode);
+  setText("criticalLevelSource", sourceParts.join(" | "));
 
   const hasBear = /bear/i.test(biasReasonRaw);
   const hasBull = /bull/i.test(biasReasonRaw);
@@ -1063,13 +1089,18 @@ function render(brief) {
       candleSeries.setData(brief.mini_chart.candles);
       clearLevelLines();
       const levels = brief.mini_chart.levels || {};
-      addLevelLine(levels.critical, "#3b82f6", "Critical");
-      addLevelLine(levels.critical_long, "rgba(34,197,94,0.75)", "Critical L");
-      addLevelLine(levels.critical_short, "rgba(239,68,68,0.75)", "Critical S");
-      addLevelLine(levels.support, "#22c55e", "Support");
-      addLevelLine(levels.resistance, "#ef4444", "Resistance");
-      addLevelLine(levels.range_low, "rgba(34,197,94,0.5)", "Range Low");
-      addLevelLine(levels.range_high, "rgba(239,68,68,0.5)", "Range High");
+      const activeCritical = levels.critical;
+      const regimeRaw = String(brief.critical_regime || "range_pullback");
+      const altCritical = regimeRaw === "bullish_breakout" ? levels.critical_short : levels.critical_long;
+      addLevelLine(activeCritical, "#3b82f6", "Critical", 2, 0);
+      if (hasNumber(activeCritical) && hasNumber(altCritical)) {
+        const gapPct = Math.abs((Number(altCritical) - Number(activeCritical)) / Number(activeCritical)) * 100;
+        if (gapPct >= 0.25) {
+          addLevelLine(altCritical, "rgba(148,163,184,0.8)", "Alt critical", 1, 2);
+        }
+      }
+      addLevelLine(levels.range_low, "rgba(34,197,94,0.55)", "Range Low", 1, 2);
+      addLevelLine(levels.range_high, "rgba(239,68,68,0.55)", "Range High", 1, 2);
       chart.timeScale().fitContent();
     }
   }

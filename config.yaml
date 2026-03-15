@@ -171,3 +171,10 @@ alerts:
     require_signal_hint: true
     max_distance_pct: 0.35
     cooldown_minutes: 60
+  gate_open:
+    enabled: true
+    min_setup_score: 6.5
+    require_no_active_setup: true
+    require_signal_hint: true
+    max_distance_pct: 0.6
+    cooldown_minutes: 120

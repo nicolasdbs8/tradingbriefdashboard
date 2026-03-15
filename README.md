@@ -84,6 +84,9 @@ Contains engine parameters:
 - filters (cost/vwap/probability/liquidity)
 - directional probability settings
 - Telegram alert settings
+  - `trigger`: full confirmation alert
+  - `heads_up`: early warning alert
+  - `gate_open`: trade gate open alert (before active setup)
 
 ### Environment variables (`.env`)
 

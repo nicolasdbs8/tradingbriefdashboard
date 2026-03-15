@@ -34,11 +34,15 @@ def _fmt_price(value: Optional[float]) -> str:
     return f"{value:,.2f}"
 
 
-def _build_signature(data: Dict[str, Any]) -> str:
+def _build_signature(data: Dict[str, Any], alert_type: str) -> str:
     active_setup = data.get("trade", {}).get("active_setup", "NONE")
     active_event = data.get("level_event", {}).get("active_event", "none")
     score = data.get("setup_score", {}).get("final", 0)
-    return f"{active_setup}:{active_event}:{score}"
+    gate_open = bool(data.get("setup_score", {}).get("trade_gate", False))
+    level = data.get("critical_level")
+    if isinstance(level, (int, float)):
+        level = round(float(level), 2)
+    return f"{alert_type}:{active_setup}:{active_event}:{score}:{gate_open}:{level}"
 
 
 def _decision(
@@ -52,7 +56,7 @@ def _decision(
         alert_type=alert_type,
         favorable=favorable,
         reason=reason,
-        signature=_build_signature(data),
+        signature=_build_signature(data, alert_type),
         payload=data,
         why_blocked=why_blocked or [],
     )
@@ -133,6 +137,35 @@ def _evaluate_heads_up(data: Dict[str, Any], cfg) -> AlertDecision:
     return _decision("heads_up", True, "heads-up favorable", data, why_blocked=why_blocked)
 
 
+def _evaluate_gate_open(data: Dict[str, Any], cfg) -> AlertDecision:
+    setup_score = data.get("setup_score", {})
+    trade = data.get("trade", {})
+    level_event = data.get("level_event", {})
+    liquidity_dist = abs(float(data.get("liquidity_distance", {}).get("min_pct", 9999)))
+    active_setup = trade.get("active_setup")
+
+    if not cfg.alerts_gate_open_enabled:
+        return _decision("gate_open", False, "gate-open disabled", data)
+
+    final_score = round(float(setup_score.get("final", 0)), 1)
+    if final_score < cfg.alerts_gate_open_min_setup_score:
+        return _decision("gate_open", False, "gate-open score below threshold", data)
+
+    if not setup_score.get("trade_gate", False):
+        return _decision("gate_open", False, "gate not open", data)
+
+    if cfg.alerts_gate_open_require_no_active_setup and active_setup not in {None, "NONE"}:
+        return _decision("gate_open", False, "gate-open already active setup", data)
+
+    if cfg.alerts_gate_open_require_signal_hint:
+        has_level_hint = liquidity_dist <= cfg.alerts_gate_open_max_distance_pct
+        has_event_hint = bool(level_event.get("sweep_detected") or level_event.get("reclaim_confirmed"))
+        if not (has_level_hint or has_event_hint):
+            return _decision("gate_open", False, "gate-open no confirmation hint", data)
+
+    return _decision("gate_open", True, "gate-open favorable", data)
+
+
 def _evaluate_alert(data: Dict[str, Any], cfg) -> AlertDecision:
     trigger = _evaluate_trigger(data, cfg)
     if trigger.favorable:
@@ -140,6 +173,9 @@ def _evaluate_alert(data: Dict[str, Any], cfg) -> AlertDecision:
     heads_up = _evaluate_heads_up(data, cfg)
     if heads_up.favorable:
         return heads_up
+    gate_open = _evaluate_gate_open(data, cfg)
+    if gate_open.favorable:
+        return gate_open
     return trigger
 
 
@@ -185,8 +221,10 @@ def _build_message(data: Dict[str, Any], alert_type: str, why_blocked: Optional[
     score = setup_score.get("final", 0)
     setup_class = setup_score.get("class", "n/a")
     gate_reason = setup_score.get("reason", "n/a")
+    gate_open = bool(setup_score.get("trade_gate", False))
     preset = data.get("setup_profile", "n/a")
     bias = market_bias.get("bias", "n/a")
+    blocked_note = ", ".join(why_blocked or [])
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     if alert_type == "trigger":
         title = "TRADING SETUP TRIGGER"
@@ -194,6 +232,9 @@ def _build_message(data: Dict[str, Any], alert_type: str, why_blocked: Optional[
     elif alert_type == "heads_up":
         title = "TRADING SETUP HEADS-UP"
         alert_type_label = "HEADS-UP"
+    elif alert_type == "gate_open":
+        title = "TRADING SETUP GATE OPEN"
+        alert_type_label = "GATE-OPEN"
     else:
         title = "TRADING SETUP TEST"
         alert_type_label = "FORCED-TEST"
@@ -207,6 +248,7 @@ def _build_message(data: Dict[str, Any], alert_type: str, why_blocked: Optional[
             f"Price: {price}",
             f"Setup: {active_setup} | Event: {active_event}",
             f"Score: {score}/10 ({setup_class})",
+            f"Trade gate: {'OPEN' if gate_open else 'BLOCKED'}",
             f"Gate: {gate_reason}",
             f"Why blocked: {blocked_note if blocked_note else 'n/a'}",
             f"Filters: cost={'PASS' if trade_filters.get('cost_pass', True) else 'FAIL'} | vwap={'PASS' if trade_filters.get('vwap_pass', True) else 'FAIL'} | prob={'PASS' if trade_filters.get('probability_pass', True) else 'FAIL'}",
@@ -236,7 +278,12 @@ def run_check(config_path: str, state_path: str, dry_run: bool, force: bool) -> 
     state = _load_state(state_file)
     signature = decision.signature
 
-    cooldown_minutes = cfg.alerts_cooldown_minutes if decision.alert_type == "trigger" else cfg.alerts_heads_up_cooldown_minutes
+    if decision.alert_type == "trigger":
+        cooldown_minutes = cfg.alerts_cooldown_minutes
+    elif decision.alert_type == "heads_up":
+        cooldown_minutes = cfg.alerts_heads_up_cooldown_minutes
+    else:
+        cooldown_minutes = cfg.alerts_gate_open_cooldown_minutes
     if not _cooldown_passed(state, cooldown_minutes, decision.alert_type) and not force:
         print("[alert] cooldown active, skipping")
         return 0
@@ -289,4 +336,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-    blocked_note = ", ".join(why_blocked or [])
