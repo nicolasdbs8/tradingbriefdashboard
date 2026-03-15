@@ -1249,6 +1249,9 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
         "critical_level_short": report.triggers.get("critical_level_short", report.triggers.get("critical_level", range_low_1h)),
         "critical_level_short_source": report.triggers.get("critical_level_short_source", report.triggers.get("critical_level_source", "1h")),
         "critical_regime": report.triggers.get("critical_regime", "range_pullback"),
+        "critical_level_quality": report.triggers.get("critical_level_quality"),
+        "critical_level_long_quality": report.triggers.get("critical_level_long_quality"),
+        "critical_level_short_quality": report.triggers.get("critical_level_short_quality"),
         "critical_level_distance_pct": _distance_pct(
             report.triggers.get("critical_level", range_low_1h), m15.price
         ),
@@ -1325,6 +1328,9 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
             "level_short": report.triggers.get("critical_level_short", report.triggers.get("critical_level", range_low_1h)),
             "level_short_source": report.triggers.get("critical_level_short_source", report.triggers.get("critical_level_source", "1h")),
             "critical_regime": report.triggers.get("critical_regime", "range_pullback"),
+            "level_quality": report.triggers.get("critical_level_quality"),
+            "level_long_quality": report.triggers.get("critical_level_long_quality"),
+            "level_short_quality": report.triggers.get("critical_level_short_quality"),
             "sweep_detected": report.triggers.get("sweep_detected", False),
             "reclaim_confirmed": report.triggers.get("reclaim_confirmed", False),
             "break_confirmed": report.triggers.get("break_confirmed", False),

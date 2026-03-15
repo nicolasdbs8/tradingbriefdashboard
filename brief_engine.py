@@ -70,6 +70,42 @@ def _nearest_level_from_groups(level_groups: dict[str, list[float]], price: floa
     return best_tf, best_level, best_dist
 
 
+def _cluster_levels_from_groups(
+    level_groups: dict[str, list[float]],
+    tolerance_pct: float,
+) -> list[dict[str, object]]:
+    points: list[tuple[float, str]] = []
+    for timeframe, levels in level_groups.items():
+        for lvl in levels:
+            try:
+                val = float(lvl)
+            except (TypeError, ValueError):
+                continue
+            if val > 0:
+                points.append((val, timeframe))
+    if not points:
+        return []
+    points.sort(key=lambda x: x[0])
+    tol = max(0.0005, float(tolerance_pct))
+    clusters: list[dict[str, object]] = []
+    for level, tf in points:
+        if not clusters:
+            clusters.append({"level": level, "members": [(level, tf)], "timeframes": {tf}})
+            continue
+        prev = clusters[-1]
+        prev_level = float(prev["level"])
+        dist = abs(level - prev_level) / max(prev_level, 1e-9)
+        if dist <= tol:
+            members = list(prev["members"])
+            members.append((level, tf))
+            prev["members"] = members
+            prev["timeframes"] = set(prev["timeframes"]) | {tf}
+            prev["level"] = sum(x for x, _ in members) / len(members)
+        else:
+            clusters.append({"level": level, "members": [(level, tf)], "timeframes": {tf}})
+    return clusters
+
+
 def _nearest_level_below_from_groups(
     level_groups: dict[str, list[float]], price: float
 ) -> tuple[str | None, float | None, float]:
@@ -87,6 +123,113 @@ def _nearest_level_below_from_groups(
             best_level = level
             best_dist = dist
     return best_tf, best_level, best_dist
+
+
+def _nearest_cluster(
+    clusters: list[dict[str, object]],
+    price: float,
+    below_only: bool = False,
+) -> tuple[float | None, set[str], float]:
+    best_level = None
+    best_tfs: set[str] = set()
+    best_dist = 9999.0
+    for cl in clusters:
+        level = float(cl.get("level", 0.0))
+        if level <= 0:
+            continue
+        if below_only and level > price:
+            continue
+        dist = abs(price - level) / level if level else 0.0
+        if dist < best_dist:
+            best_level = level
+            best_tfs = set(cl.get("timeframes", set()))
+            best_dist = dist
+    return best_level, best_tfs, best_dist
+
+
+def _compute_level_quality(
+    level: float,
+    dfs: dict[str, pd.DataFrame],
+    tolerances: dict[str, float],
+    confluence_tfs: int = 1,
+) -> dict[str, float]:
+    if level <= 0:
+        return {
+            "score": 0.0,
+            "touch_score": 0.0,
+            "recency_score": 0.0,
+            "rejection_score": 0.0,
+            "cleanliness_score": 0.0,
+            "confluence_score": 0.0,
+        }
+
+    tf_weights = {"1d": 1.6, "4h": 1.2, "1h": 1.0}
+    tf_windows = {"1d": 120, "4h": 180, "1h": 240}
+    touch_weighted = 0.0
+    recency_acc = 0.0
+    recency_weight = 0.0
+    rejection_acc = 0.0
+    rejection_n = 0
+
+    for tf in ("1d", "4h", "1h"):
+        df = dfs.get(tf)
+        if df is None or df.empty:
+            continue
+        window = min(len(df), tf_windows.get(tf, 180))
+        if window <= 2:
+            continue
+        sub = df.tail(window).reset_index(drop=True)
+        weight = tf_weights.get(tf, 1.0)
+        tol = max(0.0005, float(tolerances.get(tf, 0.003)))
+        low_band = level * (1 - tol)
+        high_band = level * (1 + tol)
+        touched = (sub["low"].astype(float) <= high_band) & (sub["high"].astype(float) >= low_band)
+        idx = [int(i) for i, flag in enumerate(touched.tolist()) if flag]
+        touch_weighted += min(6.0, float(len(idx))) * weight
+        if idx:
+            bars_ago = (window - 1) - idx[-1]
+            recency = max(0.0, 1.0 - (bars_ago / max(1.0, window)))
+            recency_acc += recency * weight
+            recency_weight += weight
+            closes = sub["close"].astype(float).tolist()
+            for i in idx:
+                if i + 1 < len(closes):
+                    rej = abs(closes[i + 1] - level) / level * 100
+                    rejection_acc += min(rej, 0.8)
+                    rejection_n += 1
+
+    touch_score = min(35.0, touch_weighted * 3.2)
+    recency_score = (recency_acc / recency_weight) * 20.0 if recency_weight > 0 else 0.0
+    rejection_avg = (rejection_acc / rejection_n) if rejection_n > 0 else 0.0
+    rejection_score = min(20.0, (rejection_avg / 0.8) * 20.0)
+
+    df_clean = dfs.get("1h")
+    cleanliness_score = 10.0
+    if df_clean is not None and len(df_clean) >= 20:
+        closes = df_clean["close"].astype(float).tail(80).tolist()
+        signs: list[int] = []
+        for c in closes:
+            signs.append(1 if c > level else (-1 if c < level else 0))
+        prev = 0
+        flips = 0
+        for s in signs:
+            if s == 0:
+                continue
+            if prev != 0 and s != prev:
+                flips += 1
+            prev = s
+        cleanliness_score = max(0.0, 20.0 * (1.0 - min(1.0, flips / 10.0)))
+
+    confluence_score = min(5.0 * float(max(1, confluence_tfs)), 25.0)
+    score = touch_score + recency_score + rejection_score + cleanliness_score + confluence_score
+    return {
+        "score": round(max(0.0, min(100.0, score)), 1),
+        "touch_score": round(touch_score, 1),
+        "recency_score": round(recency_score, 1),
+        "rejection_score": round(rejection_score, 1),
+        "cleanliness_score": round(cleanliness_score, 1),
+        "confluence_score": round(confluence_score, 1),
+    }
 
 
 def _compute_indicators(
@@ -368,6 +511,22 @@ def generate_trading_brief(
         cfg.levels = {"1d": lvl_1d, "4h": lvl_4h}
         levels_mode = "auto_generated"
 
+    # Fuse configured HTF levels with auto-detected 1h pivots for more robust level selection.
+    lvl_1h_auto = _auto_levels_from_df(
+        dfs.get("1h"),
+        tolerance_pct=float(cfg.levels_tolerance_pct.get("1h", 0.003)),
+        max_levels=12,
+    )
+    fused_level_groups = {
+        "1d": cfg.levels.get("1d", []),
+        "4h": cfg.levels.get("4h", []),
+        "1h": lvl_1h_auto,
+    }
+    fused_clusters = _cluster_levels_from_groups(
+        fused_level_groups,
+        tolerance_pct=float(cfg.levels_tolerance_pct.get("1h", 0.003)),
+    )
+
     triggers = {}
     if "15m" in dfs:
         df15 = dfs["15m"]
@@ -401,28 +560,34 @@ def generate_trading_brief(
         }
 
         h1_metrics = metrics.get("1h")
-        critical_level_short = (h1_metrics.recent_low if h1_metrics and h1_metrics.recent_low else float(last["close"]))
-        htf_levels = {
-            "1d": cfg.levels.get("1d", []),
-            "4h": cfg.levels.get("4h", []),
-        }
-        level_tf, nearest_htf_level, nearest_htf_dist_pct = _nearest_level_from_groups(
-            htf_levels, float(last["close"])
+        price_now = float(last["close"])
+        critical_level_short = (h1_metrics.recent_low if h1_metrics and h1_metrics.recent_low else price_now)
+        critical_level_short_source = "1h_range"
+        nearest_cluster_level, nearest_cluster_tfs, nearest_cluster_dist = _nearest_cluster(
+            fused_clusters,
+            price_now,
+            below_only=False,
         )
-        critical_level_short_source = "1h"
-        if nearest_htf_level is not None and nearest_htf_dist_pct <= cfg.critical_level_daily_threshold_pct:
-            critical_level_short = nearest_htf_level
-            critical_level_short_source = level_tf or "1h"
+        if (
+            nearest_cluster_level is not None
+            and nearest_cluster_dist <= cfg.critical_level_daily_threshold_pct
+        ):
+            critical_level_short = nearest_cluster_level
+            critical_level_short_source = "+".join(sorted(nearest_cluster_tfs)) or "cluster"
+        short_confluence = len(nearest_cluster_tfs) if nearest_cluster_level is not None else 1
 
         # In bullish breakout regime, anchor longs to the closest reclaimed HTF support below price.
         critical_level_long = breakout_level
         critical_level_long_source = "15m_breakout"
-        level_tf_below, nearest_htf_below, nearest_htf_below_dist_pct = _nearest_level_below_from_groups(
-            htf_levels, float(last["close"])
+        nearest_below_level, nearest_below_tfs, nearest_below_dist = _nearest_cluster(
+            fused_clusters,
+            price_now,
+            below_only=True,
         )
-        if nearest_htf_below is not None and nearest_htf_below_dist_pct <= cfg.critical_level_daily_threshold_pct:
-            critical_level_long = nearest_htf_below
-            critical_level_long_source = level_tf_below or "15m_breakout"
+        if nearest_below_level is not None and nearest_below_dist <= cfg.critical_level_daily_threshold_pct:
+            critical_level_long = nearest_below_level
+            critical_level_long_source = "+".join(sorted(nearest_below_tfs)) or "cluster_below"
+        long_confluence = len(nearest_below_tfs) if nearest_below_level is not None else 1
 
         daily_metrics = metrics.get("1d")
         h4_metrics = metrics.get("4h")
@@ -442,6 +607,19 @@ def generate_trading_brief(
             critical_level_long_source if bullish_breakout_regime else critical_level_short_source
         )
         critical_regime = "bullish_breakout" if bullish_breakout_regime else "range_pullback"
+        level_quality_long = _compute_level_quality(
+            critical_level_long,
+            dfs,
+            cfg.levels_tolerance_pct,
+            confluence_tfs=long_confluence,
+        )
+        level_quality_short = _compute_level_quality(
+            critical_level_short,
+            dfs,
+            cfg.levels_tolerance_pct,
+            confluence_tfs=short_confluence,
+        )
+        level_quality = level_quality_long if bullish_breakout_regime else level_quality_short
         atr_val = float(last["atr"]) if "atr" in df15.columns else 0.0
         reclaim = None
         sweep = None
@@ -493,6 +671,9 @@ def generate_trading_brief(
                 "critical_level_short": critical_level_short,
                 "critical_level_short_source": critical_level_short_source,
                 "critical_regime": critical_regime,
+                "critical_level_quality": level_quality,
+                "critical_level_long_quality": level_quality_long,
+                "critical_level_short_quality": level_quality_short,
                 "sweep_detected": bool(sweep),
                 "reclaim_confirmed": bool(reclaim),
                 "break_confirmed": bool(break_confirmed),

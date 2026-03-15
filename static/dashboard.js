@@ -354,6 +354,11 @@ function fmtLevel(n, fallback = "--") {
   return Number(n).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
+function fmtLevelQuality(q) {
+  if (!q || !hasNumber(q.score)) return "Q--";
+  return `Q${Number(q.score).toFixed(0)}`;
+}
+
 function compactContext(reason) {
   if (!reason) return "pending";
   return String(reason)
@@ -982,7 +987,12 @@ function render(brief) {
   const srSourceRaw = String(brief.sr_levels_source || "config");
   const srMode =
     srSourceRaw === "manual_override" ? "MANUAL" : srSourceRaw === "auto_generated" ? "AUTO" : "CONFIG";
-  setText("criticalLevelSource", `Source: ${String(brief.critical_level_source ?? "1h").toUpperCase()} • ${srMode}`);
+  const levelQuality = fmtLevelQuality(brief.critical_level_quality);
+  const regime = String(brief.critical_regime || "range_pullback").replace("_", " ").toUpperCase();
+  setText(
+    "criticalLevelSource",
+    `Source: ${String(brief.critical_level_source ?? "1h").toUpperCase()} | ${srMode} | ${levelQuality} | ${regime}`
+  );
 
   const hasBear = /bear/i.test(biasReasonRaw);
   const hasBull = /bull/i.test(biasReasonRaw);
@@ -1054,6 +1064,8 @@ function render(brief) {
       clearLevelLines();
       const levels = brief.mini_chart.levels || {};
       addLevelLine(levels.critical, "#3b82f6", "Critical");
+      addLevelLine(levels.critical_long, "rgba(34,197,94,0.75)", "Critical L");
+      addLevelLine(levels.critical_short, "rgba(239,68,68,0.75)", "Critical S");
       addLevelLine(levels.support, "#22c55e", "Support");
       addLevelLine(levels.resistance, "#ef4444", "Resistance");
       addLevelLine(levels.range_low, "rgba(34,197,94,0.5)", "Range Low");
