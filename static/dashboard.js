@@ -392,6 +392,21 @@ function deriveLevelEventBadge(brief) {
   return { label: "NONE", tone: "gray" };
 }
 
+function deriveDerivativesState(derivatives) {
+  if (!derivatives) return { state: "PENDING", tone: "gray" };
+  const oi1 = hasNumber(derivatives.oi_change_1h_pct) ? Number(derivatives.oi_change_1h_pct) : null;
+  const oi4 = hasNumber(derivatives.oi_change_4h_pct) ? Number(derivatives.oi_change_4h_pct) : null;
+  if (oi1 !== null && oi4 !== null) {
+    if (oi1 > 0 && oi4 > 0) return { state: "RELEVERAGING", tone: "green" };
+    if (oi1 < 0 && oi4 < 0) return { state: "DELEVERAGING", tone: "orange" };
+    return { state: "MIXED", tone: "blue" };
+  }
+  if (hasNumber(derivatives.oi_change_24h_pct) && Number(derivatives.oi_change_24h_pct) < 0) {
+    return { state: "DELEVERAGING", tone: "orange" };
+  }
+  return { state: "NEUTRAL", tone: "gray" };
+}
+
 function buildMarketSummary(liquidityRaw, volRaw, derivativesState, levelEventLabel, longProbPct, shortProbPct) {
   const liq = String(liquidityRaw || "pending").toLowerCase();
   const vol = String(volRaw || "pending").toLowerCase();
@@ -419,7 +434,7 @@ function buildMarketSummary(liquidityRaw, volRaw, derivativesState, levelEventLa
     return { reading, action };
   }
 
-  if (liq === "bullish" && (vol === "up" || vol === "flat") && (der === "BULLISH" || der === "NEUTRAL")) {
+  if (liq === "bullish" && (vol === "up" || vol === "flat") && (der === "RELEVERAGING" || der === "BULLISH" || der === "NEUTRAL")) {
     reading = "Buy-side conditions are supportive with stable to improving momentum.";
     action = "Prioritize long scenarios only if gate and trigger conditions align.";
     if (hasNumber(longProbPct) && hasNumber(shortProbPct) && Number(shortProbPct) - Number(longProbPct) >= 15) {
@@ -432,6 +447,16 @@ function buildMarketSummary(liquidityRaw, volRaw, derivativesState, levelEventLa
   if (der === "DELEVERAGING") {
     reading = "Open interest is contracting, which usually means weaker conviction.";
     action = "Reduce aggressiveness and wait for cleaner directional confirmation.";
+    return { reading, action };
+  }
+  if (der === "RELEVERAGING") {
+    reading = "Open interest is rebuilding on short-term horizons.";
+    action = "Favor continuation setups, but only with clean trigger confirmation.";
+    return { reading, action };
+  }
+  if (der === "MIXED") {
+    reading = "Open interest is mixed across 1h/4h, so conviction is still uneven.";
+    action = "Trade smaller or wait for alignment before increasing risk.";
     return { reading, action };
   }
 
@@ -1083,26 +1108,9 @@ function render(brief) {
   const volTone = volRaw === "up" ? "orange" : volRaw === "flat" || volRaw === "normal" ? "blue" : volRaw === "down" ? "gray" : "gray";
   setBadge("marketVolatilityBadge", volText, volTone);
 
-  let derivativesState = "NEUTRAL";
-  let derivativesTone = "gray";
-  if (brief.derivatives) {
-    if (brief.derivatives.funding_current_pct > 0.03) {
-      derivativesState = "BULLISH";
-      derivativesTone = "green";
-    } else if (brief.derivatives.funding_current_pct < -0.03) {
-      derivativesState = "BEARISH";
-      derivativesTone = "red";
-    } else if (brief.derivatives.oi_change_24h_pct < 0) {
-      derivativesState = "DELEVERAGING";
-      derivativesTone = "orange";
-    } else {
-      derivativesState = "NEUTRAL";
-      derivativesTone = "gray";
-    }
-  } else {
-    derivativesState = "PENDING";
-    derivativesTone = "gray";
-  }
+  const derivativesSignal = deriveDerivativesState(brief.derivatives);
+  const derivativesState = derivativesSignal.state;
+  const derivativesTone = derivativesSignal.tone;
   setBadge("marketDerivativesBadge", derivativesState, derivativesTone);
 
   const levelEvent = deriveLevelEventBadge(brief);
@@ -1209,7 +1217,8 @@ function render(brief) {
   if (brief.trade?.vwap_side === "below") why.push("Price below VWAP");
   if (brief.liquidity_distance?.asymmetry === "bearish") why.push("Near lower liquidity");
   if (brief.market_bias?.bias === "TREND") why.push("Trend market");
-  if (brief.derivatives && brief.derivatives.oi_change_24h_pct < 0) why.push("OI decreasing");
+  if (derivativesState === "DELEVERAGING") why.push("OI decreasing");
+  if (derivativesState === "RELEVERAGING") why.push("OI rebuilding");
   const whyList = document.getElementById("whyList");
   if (whyList) {
     whyList.innerHTML = "";

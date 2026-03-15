@@ -142,6 +142,14 @@ def score_derivatives(snapshot: Optional[DerivativesSnapshot], weight: float) ->
         return _build_factor("derivatives", "Derivatives", "bearish", weight, "Funding very positive")
     if snapshot.funding_current_pct < -0.03:
         return _build_factor("derivatives", "Derivatives", "bullish", weight, "Funding very negative")
+    oi1 = snapshot.oi_change_1h_pct
+    oi4 = snapshot.oi_change_4h_pct
+    if oi1 is not None and oi4 is not None:
+        if oi1 > 0 and oi4 > 0:
+            return _build_factor("derivatives", "Derivatives", "bullish", weight, "OI releveraging on 1h and 4h")
+        if oi1 < 0 and oi4 < 0:
+            return _build_factor("derivatives", "Derivatives", "neutral", weight, "OI deleveraging on 1h and 4h")
+        return _build_factor("derivatives", "Derivatives", "neutral", weight, "OI mixed across 1h and 4h")
     if snapshot.oi_change_24h_pct is not None and snapshot.oi_change_24h_pct < 0:
-        return _build_factor("derivatives", "Derivatives", "neutral", weight, "OI down, funding neutral")
+        return _build_factor("derivatives", "Derivatives", "neutral", weight, "OI down on 24h, short-term trend unavailable")
     return _build_factor("derivatives", "Derivatives", "neutral", weight, "Neutral positioning")

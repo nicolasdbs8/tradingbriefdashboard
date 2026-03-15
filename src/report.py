@@ -1275,8 +1275,11 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
         "derivatives": None if report.derivatives is None else {
             "provider": report.derivatives.provider,
             "mark_price": report.derivatives.mark_price,
+            "oi_change_1h_pct": report.derivatives.oi_change_1h_pct,
+            "oi_change_4h_pct": report.derivatives.oi_change_4h_pct,
             "oi_change_24h_pct": report.derivatives.oi_change_24h_pct,
             "funding_current_pct": report.derivatives.funding_current_pct,
+            "funding_1d_pct": report.derivatives.funding_1d_pct,
         },
         "trade": {
             "side": active_setup,

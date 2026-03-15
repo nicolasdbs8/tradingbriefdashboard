@@ -322,11 +322,15 @@ def generate_trading_brief(
     sr_overrides = _load_sr_overrides()
     levels_mode = "config"
     if symbol_norm in sr_overrides:
-        cfg.levels = {
-            "1d": sr_overrides[symbol_norm].get("1d", []),
-            "4h": sr_overrides[symbol_norm].get("4h", []),
-        }
-        levels_mode = "manual_override"
+        override_1d = sr_overrides[symbol_norm].get("1d", [])
+        override_4h = sr_overrides[symbol_norm].get("4h", [])
+        # Ignore empty overrides to avoid wiping configured HTF levels.
+        if override_1d or override_4h:
+            cfg.levels = {
+                "1d": override_1d,
+                "4h": override_4h,
+            }
+            levels_mode = "manual_override"
     elif symbol_norm != default_norm:
         # Auto-build levels for non-default symbols when no manual override is provided.
         cfg.levels = {"1d": [], "4h": []}
