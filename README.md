@@ -134,7 +134,31 @@ python export_brief.py
 
 2. Open `static/standalone_dashboard.html`, then load `brief.json`.
 
-### D) Telegram alerts (optional)
+### D) Free remote dashboard via GitHub Pages (static + auto-regenerated JSON)
+
+This repo includes `.github/workflows/static-dashboard-pages.yml`.
+
+What it does:
+
+- Generates `brief.json`
+- Publishes `static/standalone_dashboard.html` as `index.html`
+- Deploys both files to GitHub Pages
+- Runs hourly (`cron`)
+
+Setup once:
+
+1. Push the repo to GitHub.
+2. In repository settings, open **Pages**.
+3. Set **Source** to **GitHub Actions**.
+4. Run workflow **Static Dashboard Pages** once (`workflow_dispatch`).
+5. Open the URL shown in the workflow output.
+
+Notes:
+
+- If Kraken secrets are missing in GitHub, the build still works with fallbacks.
+- The standalone page auto-refreshes `brief.json` every 5 minutes client-side.
+
+### E) Telegram alerts (optional)
 
 Dry run:
 
@@ -191,17 +215,25 @@ python -m pytest -q
   - verify `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`
   - test with `--dry-run` first
 
-## 10) Security
+## 10) GitHub Actions quota (to avoid monthly limit)
+
+- Public repo: GitHub-hosted Actions is usually not a practical minute-cap concern.
+- Private repo (GitHub Free): 2,000 Linux minutes/month included.
+- Hourly job: about 720 runs/month.
+- If one run takes ~1 minute, usage is ~720 minutes/month (safe buffer).
+- Existing `telegram-alerts.yml` runs every 15 minutes and can consume much more quota.
+
+## 11) Security
 
 - Do not commit secrets (`.env`, local scripts, screenshots).
 - If a key was exposed, revoke/rotate it immediately.
 
-## 11) Disclaimer
+## 12) Disclaimer
 
 This tool is an analysis assistant, not financial advice.
 You remain responsible for all trading decisions and risk.
 
-## 12) Git update and push
+## 13) Git update and push
 
 ```bash
 git status

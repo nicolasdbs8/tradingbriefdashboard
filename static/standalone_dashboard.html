@@ -57,8 +57,10 @@
       <header>
         <h1>Trading Brief Dashboard (Standalone)</h1>
         <div class="controls">
-          <label for="fileInput">Load brief.json:</label>
+          <label for="fileInput">Load local JSON:</label>
           <input type="file" id="fileInput" accept=".json" />
+          <button id="reloadBtn" type="button">Reload live</button>
+          <span id="dataStatus">Data: pending</span>
           <button id="soundToggle" type="button">Sound: OFF</button>
         </div>
       </header>
@@ -120,6 +122,7 @@
     <script>
       let soundEnabled = false;
       let lastAlertSignature = null;
+      let autoRefreshTimer = null;
 
       function initSoundToggle() {
         const toggle = document.getElementById("soundToggle");
@@ -177,6 +180,10 @@
         if (el) el.textContent = text;
       }
 
+      function setStatus(text) {
+        setText("dataStatus", text);
+      }
+
       function render(brief) {
         setText("price", brief.price?.toFixed(2));
         setText(
@@ -232,6 +239,21 @@
         }
       }
 
+      async function loadFromRemote() {
+        setStatus("Data: loading...");
+        try {
+          const res = await fetch(`brief.json?ts=${Date.now()}`, { cache: "no-store" });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          render(data);
+          const now = new Date().toISOString().slice(11, 16);
+          setStatus(`Data: live (${now} UTC)`);
+        } catch (err) {
+          setStatus("Data: remote unavailable");
+          console.error(err);
+        }
+      }
+
       document.getElementById("fileInput").addEventListener("change", (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -239,11 +261,21 @@
         reader.onload = () => {
           const data = JSON.parse(reader.result);
           render(data);
+          setStatus("Data: local file loaded");
         };
         reader.readAsText(file);
       });
 
+      const reloadBtn = document.getElementById("reloadBtn");
+      if (reloadBtn) {
+        reloadBtn.addEventListener("click", () => {
+          loadFromRemote();
+        });
+      }
+
       initSoundToggle();
+      loadFromRemote();
+      autoRefreshTimer = setInterval(loadFromRemote, 5 * 60 * 1000);
     </script>
   </body>
 </html>
