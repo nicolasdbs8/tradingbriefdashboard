@@ -235,9 +235,11 @@ body {
 }
 
 .scanner-row.selected {
-  border-color: rgba(97, 165, 255, 0.75);
-  background: rgba(36, 68, 110, 0.28);
-  box-shadow: 0 0 0 1px rgba(97, 165, 255, 0.25) inset;
+  border-color: rgba(97, 165, 255, 0.9);
+  background: rgba(36, 68, 110, 0.33);
+  box-shadow:
+    0 0 0 1px rgba(97, 165, 255, 0.32) inset,
+    0 8px 18px rgba(26, 68, 126, 0.28);
 }
 
 .scanner-row-top {
@@ -248,7 +250,7 @@ body {
 }
 
 .scanner-symbol {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 780;
   color: #eaf3fd;
 }
@@ -274,42 +276,46 @@ body {
 .scanner-score {
   color: #dbeaf8;
   font-weight: 700;
+  font-size: 12px;
 }
 
 .scanner-tag {
-  font-size: 10px;
+  font-size: 9px;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: #c7d8ea;
+  color: #9db3c9;
 }
 
 .scanner-setup-class {
-  font-size: 10px;
-  color: #9fb2c6;
+  font-size: 9px;
+  color: #8ea4b9;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
 .scanner-opportunity {
-  font-size: 11px;
-  color: #a7bed3;
+  font-size: 9px;
+  color: #7f98ae;
+  opacity: 0.88;
 }
 
 .scanner-secondary-chip {
-  font-size: 10px;
-  color: #8ca1b6;
+  font-size: 9px;
+  color: #7891a8;
   letter-spacing: 0.02em;
-  opacity: 0.92;
+  opacity: 0.74;
 }
 
 .scanner-distance.near {
   color: #86efac;
   font-weight: 700;
+  font-size: 12px;
 }
 
 .scanner-distance.far {
   color: #fca5a5;
   font-weight: 700;
+  font-size: 12px;
 }
 
 .scanner-range {
@@ -687,7 +693,7 @@ button {
 .gate-reason {
   margin-top: 8px;
   color: #f8d0d0;
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.35;
 }
 
@@ -705,6 +711,22 @@ button {
   font-size: 11px;
   color: #9fb2c6;
   opacity: 0.92;
+}
+
+.gate-conclusion {
+  margin-top: 7px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #dbeafe;
+}
+
+body.gate-open .gate-conclusion {
+  color: #86efac;
+}
+
+body.gate-blocked .gate-conclusion {
+  color: #fecaca;
 }
 
 .setup-meta-label {
@@ -767,6 +789,11 @@ button {
   margin-bottom: 8px;
 }
 
+.market-context-row.key-signal {
+  border-color: rgba(97, 165, 255, 0.55);
+  background: rgba(27, 51, 83, 0.34);
+}
+
 .market-context-value {
   margin-top: 4px;
   font-size: 14px;
@@ -790,6 +817,18 @@ button {
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 9px;
   background: rgba(12, 16, 21, 0.22);
+  opacity: 0.72;
+}
+
+.market-state-item.key-signal {
+  opacity: 1;
+  border-color: rgba(97, 165, 255, 0.5);
+  background: rgba(25, 48, 79, 0.26);
+}
+
+#marketSummaryBias {
+  color: #e8f2ff;
+  font-weight: 700;
 }
 
 .market-summary-box {
@@ -1052,6 +1091,13 @@ button {
   box-shadow: 0 12px 32px rgba(24, 81, 154, 0.32);
 }
 
+.setup-card.weak-setup {
+  opacity: 0.58;
+  filter: saturate(0.72);
+  border-color: rgba(148, 163, 184, 0.35);
+  box-shadow: none;
+}
+
 body.gate-blocked #setupScoreCard {
   border-color: rgba(239, 68, 68, 0.82);
   background: linear-gradient(165deg, rgba(99, 17, 17, 0.35), rgba(23, 31, 42, 0.98));
@@ -1198,11 +1244,11 @@ body.gate-open #setupScoreCard {
 }
 
 .legend-dot.price {
-  background: #cbd5e1;
+  background: #e2e8f0;
 }
 
 .legend-dot.critical {
-  background: #3b82f6;
+  background: #2563eb;
 }
 
 .legend-dot.trigger {

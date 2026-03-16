@@ -19,7 +19,7 @@ let lastAttentionState = null;
 let unreadEvents = 0;
 let detailRefreshTimer = null;
 let selectedScannerRowData = null;
-const BASE_TITLE = "Trading Brief Dashboard";
+const BASE_TITLE = "Trading Brief";
 const NUMBER_LOCALE = "en-US";
 
 function initSoundToggle() {
@@ -134,15 +134,15 @@ function setFaviconColor(color) {
 
 function attentionStateFrom(action, status, gateOpen, symbol) {
   if (action === "LONG ACTIVE" || action === "SHORT ACTIVE") {
-    return { tone: "green", icon: "[G]", label: action, color: "#22c55e", symbol };
+    return { tone: "green", label: action, color: "#22c55e", symbol };
   }
   if (action === "WATCH") {
-    return { tone: "orange", icon: "[W]", label: "WATCH", color: "#f59e0b", symbol };
+    return { tone: "orange", label: "WATCH", color: "#f59e0b", symbol };
   }
   if (!gateOpen && status === "NO SETUP") {
-    return { tone: "red", icon: "[R]", label: "BLOCKED", color: "#ef4444", symbol };
+    return { tone: "red", label: "BLOCKED", color: "#ef4444", symbol };
   }
-  return { tone: "gray", icon: "[.]", label: action || "WAIT", color: "#64748b", symbol };
+  return { tone: "gray", label: action || "WAIT", color: "#64748b", symbol };
 }
 
 function isMajorAttentionTransition(prevState, nextState) {
@@ -170,7 +170,7 @@ function applyAttentionState(next) {
     }
   }
   const unreadPrefix = unreadEvents > 0 ? `(${unreadEvents}) ` : "";
-  document.title = `${unreadPrefix}${next.icon} [${next.label}] ${next.symbol} | ${BASE_TITLE}`;
+  document.title = `${unreadPrefix}${next.label} ${next.symbol} | ${BASE_TITLE}`;
   lastAttentionState = next;
 }
 
@@ -209,21 +209,21 @@ function buildUniverseAttention(rows) {
   if (!best) return null;
   const isEngine = best.fast_mode !== true;
   if (isEngine && (best.action === "LONG ACTIVE" || best.action === "SHORT ACTIVE")) {
-    return { tone: "green", icon: "[G]", label: `${best.action}`, color: "#22c55e", symbol: best.symbol };
+    return { tone: "green", label: `${best.action}`, color: "#22c55e", symbol: best.symbol };
   }
   if (isEngine && best.gate_open) {
-    return { tone: "green", icon: "[G]", label: "GATE OPEN", color: "#16a34a", symbol: best.symbol };
+    return { tone: "green", label: "GATE OPEN", color: "#16a34a", symbol: best.symbol };
   }
   if (isEngine && best.action === "WATCH") {
-    return { tone: "orange", icon: "[W]", label: "WATCH", color: "#f59e0b", symbol: best.symbol };
+    return { tone: "orange", label: "WATCH", color: "#f59e0b", symbol: best.symbol };
   }
   if (best.interesting && hasNumber(best.opportunity_score) && Number(best.opportunity_score) >= 70) {
-    return { tone: "orange", icon: "[W]", label: "SCAN HOT", color: "#f59e0b", symbol: best.symbol };
+    return { tone: "orange", label: "SCAN HOT", color: "#f59e0b", symbol: best.symbol };
   }
   if (best.interesting) {
-    return { tone: "orange", icon: "[W]", label: "SCAN WATCH", color: "#f59e0b", symbol: best.symbol };
+    return { tone: "orange", label: "SCAN WATCH", color: "#f59e0b", symbol: best.symbol };
   }
-  return { tone: "gray", icon: "[.]", label: "SCAN OK", color: "#64748b", symbol: best.symbol || selectedSymbol };
+  return { tone: "gray", label: "SCAN OK", color: "#64748b", symbol: best.symbol || selectedSymbol };
 }
 
 async function fetchBrief(symbol = null) {
@@ -587,7 +587,9 @@ function setGateVisualState(gateOpen, reason) {
   body.classList.add(gateOpen ? "gate-open" : "gate-blocked");
   const gateBadge = document.getElementById("setupGateBadge");
   if (gateBadge) gateBadge.classList.toggle("xl", !gateOpen);
-  const message = gateOpen ? "Reason: gate open, execution allowed." : `Reason: ${humanizeBlockedReason(reason)}`;
+  const conclusion = gateOpen ? "Execution allowed" : "Execution not allowed";
+  setText("setupGateConclusion", conclusion);
+  const message = gateOpen ? "Reason: gate conditions validated." : `Reason: ${humanizeBlockedReason(reason)}`;
   setText("setupGateReason", message);
 }
 
@@ -876,19 +878,7 @@ function renderScanner(data) {
     top.appendChild(symbol);
     top.appendChild(badge);
 
-    // Level 2: setup/tag class
-    const secondary = document.createElement("div");
-    secondary.className = "scanner-row-secondary";
-    const labelLine = document.createElement("div");
-    labelLine.className = "scanner-tag";
-    labelLine.textContent = row.opportunity_label || (row.fast_mode ? "FAST SCAN" : "DETAILED");
-    const setupClass = document.createElement("div");
-    setupClass.className = "scanner-setup-class";
-    setupClass.textContent = row.setup_class || (row.fast_mode ? "FAST" : "PENDING");
-    secondary.appendChild(labelLine);
-    secondary.appendChild(setupClass);
-
-    // Level 3: score + distance/opportunity
+    // Level 2: score + distance to trigger
     const tertiary = document.createElement("div");
     tertiary.className = "scanner-row-tertiary";
     const score = document.createElement("span");
@@ -911,9 +901,21 @@ function renderScanner(data) {
     tertiary.appendChild(score);
     tertiary.appendChild(dist);
 
+    // Level 3: setup/tag class
+    const secondary = document.createElement("div");
+    secondary.className = "scanner-row-secondary";
+    const labelLine = document.createElement("div");
+    labelLine.className = "scanner-tag";
+    labelLine.textContent = row.opportunity_label || (row.fast_mode ? "FAST SCAN" : "DETAILED");
+    const setupClass = document.createElement("div");
+    setupClass.className = "scanner-setup-class";
+    setupClass.textContent = row.setup_class || (row.fast_mode ? "FAST" : "PENDING");
+    secondary.appendChild(labelLine);
+    secondary.appendChild(setupClass);
+
     card.appendChild(top);
-    card.appendChild(secondary);
     card.appendChild(tertiary);
+    card.appendChild(secondary);
 
     // Level 4: secondary data
     if (row.fast_mode && hasNumber(row.range_pos_pct)) {
@@ -1013,6 +1015,20 @@ function applyBiasHint(activeSetup, biasReason) {
   const hasBull = /bull/i.test(String(biasReason || ""));
   if (hasBear) shortCard.classList.add("bias-hint");
   else if (hasBull) longCard.classList.add("bias-hint");
+}
+
+function updateSetupCardPriority(gateOpen, longRR, shortRR, longPct, shortPct) {
+  const longCard = document.getElementById("longSetupCard");
+  const shortCard = document.getElementById("shortSetupCard");
+  if (!longCard || !shortCard) return;
+
+  const longContradicted = hasNumber(longPct) && hasNumber(shortPct) && Number(longPct) + 2 < Number(shortPct);
+  const shortContradicted = hasNumber(longPct) && hasNumber(shortPct) && Number(shortPct) + 2 < Number(longPct);
+  const longWeak = !gateOpen || (hasNumber(longRR) && Number(longRR) < 1) || longContradicted;
+  const shortWeak = !gateOpen || (hasNumber(shortRR) && Number(shortRR) < 1) || shortContradicted;
+
+  longCard.classList.toggle("weak-setup", Boolean(longWeak));
+  shortCard.classList.toggle("weak-setup", Boolean(shortWeak));
 }
 
 function deriveCurrentAction(brief, scoreValue) {
@@ -1146,10 +1162,14 @@ function render(brief) {
     }
   );
 
+  let longProbPct = null;
+  let shortProbPct = null;
   if (brief.directional_probability) {
     const prob = brief.directional_probability;
     const longPct = Number(prob.long_probability_pct ?? 0);
     const shortPct = Number(prob.short_probability_pct ?? Math.max(0, 100 - longPct));
+    longProbPct = longPct;
+    shortProbPct = shortPct;
     setText("probLong", fmtPct(longPct));
     setText("probShort", fmtPct(shortPct));
     setText("probEdge", `Edge ${prob.edge ?? "not available"}`);
@@ -1193,14 +1213,14 @@ function render(brief) {
       const triggerLong = hasNumber(levels.critical_long) ? levels.critical_long : brief.critical_level_long;
       const triggerShort = hasNumber(levels.critical_short) ? levels.critical_short : brief.critical_level_short;
 
-      addLevelLine(currentPrice, "rgba(203,213,225,0.95)", "Price", 1, 0);
-      addLevelLine(critical, "#3b82f6", "Critical", 2, 0);
+      addLevelLine(currentPrice, "rgba(226,232,240,0.98)", "Price", 2, 0);
+      addLevelLine(critical, "#2563eb", "Critical", 3, 0);
 
       if (hasNumber(triggerLong)) {
-        addLevelLine(triggerLong, "rgba(34,197,94,0.85)", "Trigger LONG", 1, 2);
+        addLevelLine(triggerLong, "rgba(34,197,94,0.95)", "Trigger LONG", 2, 0);
       }
       if (hasNumber(triggerShort)) {
-        addLevelLine(triggerShort, "rgba(245,158,11,0.9)", "Trigger SHORT", 1, 2);
+        addLevelLine(triggerShort, "rgba(245,158,11,0.95)", "Trigger SHORT", 2, 0);
       }
 
       addLevelLine(levels.range_low, "rgba(34,197,94,0.35)", "Range Low", 1, 2);
@@ -1236,6 +1256,7 @@ function render(brief) {
     setText("tp2S", `TP2 ${fmtUsdcCompact(brief.tp_plan_short[1].price)} (${fmtNumber(brief.tp_plan_short[1].size_pct * 100, 0)}%)`);
     setText("tp3S", `TP3 ${fmtUsdcCompact(brief.tp_plan_short[2].price)} (${fmtNumber(brief.tp_plan_short[2].size_pct * 100, 0)}%)`);
   }
+  updateSetupCardPriority(Boolean(gateOpen), longRR, shortRR, longProbPct, shortProbPct);
 
   setText("contextCapitalTotal", `Capital total: ${fmtUsdc(brief.capital?.total, "not available")}`);
   setText("contextCapitalActive", `Capital active: ${fmtUsdc(brief.capital?.active, "not available")}`);
@@ -1244,6 +1265,8 @@ function render(brief) {
   setText("marketContext", contextReason);
   const marketContextEl = document.getElementById("marketContext");
   if (marketContextEl) marketContextEl.textContent = String(contextReason || "pending").toUpperCase();
+  const marketContextRow = document.querySelector(".market-context-row");
+  if (marketContextRow) marketContextRow.classList.toggle("key-signal", hasBear || hasBull);
 
   const liquidityRaw = String(brief.liquidity_distance?.asymmetry ?? "pending");
   const liquidityText = liquidityRaw.toUpperCase();
@@ -1262,8 +1285,6 @@ function render(brief) {
 
   const levelEvent = deriveLevelEventBadge(brief);
   setBadge("marketLevelEventBadge", levelEvent.label, levelEvent.tone);
-  const longProbPct = brief.directional_probability?.long_probability_pct;
-  const shortProbPct = brief.directional_probability?.short_probability_pct;
   const marketSummary = buildMarketSummary(
     liquidityRaw,
     volRaw,
@@ -1275,6 +1296,10 @@ function render(brief) {
   setText("marketSummaryReading", marketSummary.context);
   setText("marketSummaryBias", `Bias ${marketSummary.bias}`);
   setText("marketSummaryAction", marketSummary.action);
+  const stateItems = document.querySelectorAll(".market-state-item");
+  stateItems.forEach((item) => item.classList.remove("key-signal"));
+  const levelEventBadge = document.getElementById("marketLevelEventBadge");
+  if (levelEventBadge?.parentElement) levelEventBadge.parentElement.classList.add("key-signal");
 
   setText("execPosUsd", hasNumber(brief.position_size?.usdc) ? `${fmtNumber(brief.position_size.usdc, 2)} ${quoteCurrency}` : "--");
   setText("execRisk", hasNumber(brief.position_size?.risk_per_trade) ? `${fmtNumber(brief.position_size.risk_per_trade, 2)} ${quoteCurrency}` : "--");
