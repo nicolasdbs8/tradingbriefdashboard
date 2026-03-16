@@ -713,6 +713,16 @@ button {
   opacity: 0.92;
 }
 
+.setup-cost-details {
+  margin-top: 6px;
+}
+
+.setup-cost-details summary {
+  cursor: pointer;
+  color: #cbd5e1;
+  font-size: 12px;
+}
+
 .gate-conclusion {
   margin-top: 7px;
   font-size: 13px;

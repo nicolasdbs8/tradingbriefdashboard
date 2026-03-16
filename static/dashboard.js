@@ -821,7 +821,8 @@ function renderScanner(data) {
   universeAttention = buildUniverseAttention(allRows);
   syncAttentionUI();
   setText("scanUniverse", String(summary.universe_size ?? 0));
-  setText("scanOpenGates", String(summary.open_gates ?? 0));
+  const openGatesComputed = allRows.filter((row) => Boolean(row?.gate_open)).length;
+  setText("scanOpenGates", String(openGatesComputed));
   setText("scanInteresting", String(summary.interesting ?? 0));
   setText("scanActiveSetups", String(summary.active_setups ?? 0));
   const selectedRow = allRows.find((row) => row.symbol === selectedSymbol);
@@ -872,6 +873,8 @@ function renderScanner(data) {
     badge.className = `badge ${symbolBadgeTone(row)}`;
     if (row.fast_mode) {
       badge.textContent = String(row.opportunity_label || "SCAN").replace("POTENTIAL ", "SCAN ");
+    } else if (row.gate_open) {
+      badge.textContent = "GATE OPEN";
     } else {
       badge.textContent = row.action || row.status || "PENDING";
     }
@@ -1024,8 +1027,15 @@ function updateSetupCardPriority(gateOpen, longRR, shortRR, longPct, shortPct) {
 
   const longContradicted = hasNumber(longPct) && hasNumber(shortPct) && Number(longPct) + 2 < Number(shortPct);
   const shortContradicted = hasNumber(longPct) && hasNumber(shortPct) && Number(shortPct) + 2 < Number(longPct);
-  const longWeak = !gateOpen || (hasNumber(longRR) && Number(longRR) < 1) || longContradicted;
-  const shortWeak = !gateOpen || (hasNumber(shortRR) && Number(shortRR) < 1) || shortContradicted;
+  let longWeak = !gateOpen || (hasNumber(longRR) && Number(longRR) < 1) || longContradicted;
+  let shortWeak = !gateOpen || (hasNumber(shortRR) && Number(shortRR) < 1) || shortContradicted;
+
+  if (gateOpen && longWeak && shortWeak) {
+    const longRank = (hasNumber(longRR) ? Number(longRR) : 0) + (hasNumber(longPct) ? Number(longPct) / 100 : 0);
+    const shortRank = (hasNumber(shortRR) ? Number(shortRR) : 0) + (hasNumber(shortPct) ? Number(shortPct) / 100 : 0);
+    if (longRank >= shortRank) longWeak = false;
+    else shortWeak = false;
+  }
 
   longCard.classList.toggle("weak-setup", Boolean(longWeak));
   shortCard.classList.toggle("weak-setup", Boolean(shortWeak));

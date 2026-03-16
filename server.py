@@ -440,6 +440,17 @@ def _scanner_summary(rows: list[dict]) -> dict:
     }
 
 
+def _with_current_symbol(symbols: list[str]) -> list[str]:
+    with _lock:
+        current_symbol = str(_cache.get("current_symbol", "BTC/USDC"))
+    if not current_symbol:
+        return symbols
+    ordered = [current_symbol] + [s for s in symbols if s != current_symbol]
+    if len(ordered) > DEFAULT_TOP_X:
+        return ordered[:DEFAULT_TOP_X]
+    return ordered
+
+
 def _get_or_compute_symbol(symbol: str, set_current: bool = False) -> dict:
     with _lock:
         payload = _cache["briefs"].get(symbol)
@@ -536,7 +547,7 @@ def get_scanner_list() -> JSONResponse:
         _refresh_scanner_fast(force=False)
     except Exception as exc:
         logging.warning("Scanner fast refresh on list failed: %s", exc)
-    symbols = _ensure_universe()
+    symbols = _with_current_symbol(_ensure_universe())
     with _lock:
         briefs = dict(_cache["briefs"])
         fast_rows = dict(_cache.get("scanner_fast_rows", {}))
@@ -573,7 +584,7 @@ def get_scanner_summary() -> JSONResponse:
         _refresh_scanner_fast(force=False)
     except Exception as exc:
         logging.warning("Scanner fast refresh on summary failed: %s", exc)
-    symbols = _ensure_universe()
+    symbols = _with_current_symbol(_ensure_universe())
     with _lock:
         briefs = dict(_cache["briefs"])
         fast_rows = dict(_cache.get("scanner_fast_rows", {}))

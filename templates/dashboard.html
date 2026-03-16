@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <title>Trading Brief Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css?v=29" />
+    <link rel="stylesheet" href="/static/style.css?v=30" />
     <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
   </head>
   <body>
@@ -165,7 +165,10 @@
           </div>
           <div class="gate-conclusion" id="setupGateConclusion">Execution pending</div>
           <div class="card-sub gate-reason" id="setupGateReason">Blocked reason: pending</div>
-          <div class="setup-cost-hint" id="setupCostHint">Cost filter: pending</div>
+          <details class="setup-cost-details">
+            <summary>Cost filter details</summary>
+            <div class="setup-cost-hint" id="setupCostHint">Cost filter: pending</div>
+          </details>
         </div>
       </section>
 
