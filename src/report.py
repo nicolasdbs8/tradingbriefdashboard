@@ -169,12 +169,25 @@ def _liquidity_distance_for_event(
     active_event: str,
     below_pct: float,
     above_pct: float,
+    critical_pct: float,
+    critical_regime: str,
 ) -> Tuple[float, str]:
     if active_event == "sweep_reclaim":
         return below_pct, "below"
     if active_event == "break":
         return above_pct, "above"
+    if critical_regime in {"bullish_breakout", "range_pullback"}:
+        return critical_pct, "critical"
     return min(below_pct, above_pct), "nearest"
+
+
+def _effective_liquidity_max_distance_pct(base_max_pct: float, atr: float, price: float) -> float:
+    if price <= 0:
+        return base_max_pct
+    atr_pct = abs(atr / price) * 100
+    # Adaptive threshold: widen in high-volatility regimes while capping drift.
+    dynamic_pct = min(1.2, atr_pct * 0.8)
+    return max(base_max_pct, dynamic_pct)
 
 
 def _level_source_bonus(level_source: str, enabled: bool, weights: Dict[str, float]) -> float:
@@ -563,10 +576,19 @@ def format_brief(report: BriefReport) -> str:
     liquidity_below_pct = _distance_pct_abs(h1.price, range_low_1h)
     liquidity_above_pct = _distance_pct_abs(range_high_1h, h1.price)
     liquidity_asymmetry = "bearish" if liquidity_below_pct < liquidity_above_pct else "bullish" if liquidity_above_pct < liquidity_below_pct else "balanced"
+    critical_regime = report.triggers.get("critical_regime", "range_pullback")
+    critical_dist_pct = _distance_pct_abs(h1.price, setup_level)
     liquidity_event_dist_pct, liquidity_event_side = _liquidity_distance_for_event(
         active_event,
         liquidity_below_pct,
         liquidity_above_pct,
+        critical_dist_pct,
+        critical_regime,
+    )
+    liquidity_max_distance_pct_effective = _effective_liquidity_max_distance_pct(
+        report.liquidity_gate_max_distance_pct,
+        h1.atr,
+        h1.price,
     )
     cost_pass, cost_reason = passes_cost_filter(
         stop_distance_rate,
@@ -588,7 +610,7 @@ def format_brief(report: BriefReport) -> str:
     vwap_pass = _vwap_pass(active_event, vwap_side, report.vwap_gate_enabled)
     liquidity_gate_pass = (
         (not report.liquidity_gate_enabled)
-        or liquidity_event_dist_pct <= report.liquidity_gate_max_distance_pct
+        or liquidity_event_dist_pct <= liquidity_max_distance_pct_effective
     )
     long_inversion_confirmed = bool(report.triggers.get("long_inversion_confirmed", True))
     short_inversion_confirmed = bool(report.triggers.get("short_inversion_confirmed", True))
@@ -840,7 +862,7 @@ def format_brief(report: BriefReport) -> str:
             f"Cost filter: {'PASS' if cost_pass else 'FAIL'} ({cost_reason})",
             f"VWAP filter: {'PASS' if vwap_pass else 'FAIL'} (side={vwap_side})",
             f"Probability filter: {'PASS' if probability_pass else 'FAIL'} (max={prob_max:,.1f}%, min={report.probability_gate_trigger_min:,.1f}%)",
-            f"Liquidity gate: {'PASS' if liquidity_gate_pass else 'FAIL'} ({liquidity_event_dist_pct:,.2f}% on {liquidity_event_side})",
+            f"Liquidity gate: {'PASS' if liquidity_gate_pass else 'FAIL'} ({liquidity_event_dist_pct:,.2f}% on {liquidity_event_side}, max={liquidity_max_distance_pct_effective:,.2f}%)",
             "",
             *tp_lines,
             "",
@@ -951,6 +973,8 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
     liquidity_below_pct = _distance_pct_abs(h1.price, range_low_1h)
     liquidity_above_pct = _distance_pct_abs(range_high_1h, h1.price)
     liquidity_asymmetry = "bearish" if liquidity_below_pct < liquidity_above_pct else "bullish" if liquidity_above_pct < liquidity_below_pct else "balanced"
+    critical_regime = report.triggers.get("critical_regime", "range_pullback")
+    critical_dist_pct = _distance_pct_abs(h1.price, setup_level)
     target_high, target_low = _select_target_levels(
         report.setup_target_timeframe,
         range_high_1h,
@@ -1050,6 +1074,13 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
         active_event,
         liquidity_below_pct,
         liquidity_above_pct,
+        critical_dist_pct,
+        critical_regime,
+    )
+    liquidity_max_distance_pct_effective = _effective_liquidity_max_distance_pct(
+        report.liquidity_gate_max_distance_pct,
+        h1.atr,
+        h1.price,
     )
     if location_score == 0:
         final_score = min(final_score, 6)
@@ -1111,7 +1142,7 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
     vwap_pass = _vwap_pass(active_event, vwap_side, report.vwap_gate_enabled)
     liquidity_gate_pass = (
         (not report.liquidity_gate_enabled)
-        or liquidity_event_dist_pct <= report.liquidity_gate_max_distance_pct
+        or liquidity_event_dist_pct <= liquidity_max_distance_pct_effective
     )
     long_inversion_confirmed = bool(report.triggers.get("long_inversion_confirmed", True))
     short_inversion_confirmed = bool(report.triggers.get("short_inversion_confirmed", True))
@@ -1313,6 +1344,7 @@ def build_brief_data(report: BriefReport, dfs: Optional[Dict[str, pd.DataFrame]]
                 "liquidity_gate_pass": liquidity_gate_pass,
                 "liquidity_event_side": liquidity_event_side,
                 "liquidity_event_pct": liquidity_event_dist_pct,
+                "liquidity_max_distance_pct_effective": liquidity_max_distance_pct_effective,
                 "inversion_pass": inversion_pass,
                 "long_inversion_confirmed": long_inversion_confirmed,
                 "short_inversion_confirmed": short_inversion_confirmed,

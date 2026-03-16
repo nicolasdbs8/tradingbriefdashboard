@@ -124,6 +124,22 @@ Then open:
 http://127.0.0.1:8000
 ```
 
+### B.1) Access from tablet/phone on local network (LAN)
+
+`python server.py` binds to localhost only (`127.0.0.1`), so it is not reachable from other devices.
+
+Use this command instead:
+
+```bash
+python -m uvicorn server:app --host 0.0.0.0 --port 8000
+```
+
+Then:
+
+1. Get your PC IPv4 address (`ipconfig` on Windows).
+2. Open on tablet/phone: `http://<PC_IPV4>:8000`
+3. If needed, allow Python/Uvicorn in Windows Firewall (private network).
+
 ### C) JSON export + standalone dashboard
 
 1. Generate `brief.json`:

@@ -441,54 +441,63 @@ function buildMarketSummary(liquidityRaw, volRaw, derivativesState, levelEventLa
   const der = String(derivativesState || "pending").toUpperCase();
   const evt = String(levelEventLabel || "NONE").toUpperCase();
 
-  let reading = "Mixed market conditions with no clear edge yet.";
+  let context = "Mixed conditions, no clean edge yet.";
+  let bias = "NEUTRAL";
   let action = "Wait for stronger confirmation before acting.";
 
   if (evt.includes("CONFIRMED")) {
-    reading = "A structural event is confirmed and can become actionable.";
+    context = "Structural event confirmed and actionable.";
+    bias = evt.includes("BREAK") ? "SHORT" : evt.includes("SWEEP") ? "LONG" : "NEUTRAL";
     action = "Focus on playbook direction and execute only if trade gate is open.";
-    return { reading, action };
+    return { context, bias, action };
   }
 
   if (evt.includes("DETECTED")) {
-    reading = "A potential structural event is detected, but not fully confirmed.";
+    context = "Potential structural event detected, not yet confirmed.";
+    bias = evt.includes("BREAK") ? "SHORT WATCH" : evt.includes("SWEEP") ? "LONG WATCH" : "NEUTRAL";
     action = "Stay in watch mode and wait for confirmation.";
-    return { reading, action };
+    return { context, bias, action };
   }
 
   if (liq === "bearish" && (vol === "down" || vol === "flat") && (der === "DELEVERAGING" || der === "BEARISH")) {
-    reading = "Sellers dominate, momentum is fading, and positioning is risk-off.";
+    context = "Sellers dominate, momentum fading, positioning risk-off.";
+    bias = "SHORT / DEFENSIVE";
     action = "Avoid forcing entries and wait for a clean reclaim or confirmed break setup.";
-    return { reading, action };
+    return { context, bias, action };
   }
 
   if (liq === "bullish" && (vol === "up" || vol === "flat") && (der === "RELEVERAGING" || der === "BULLISH" || der === "NEUTRAL")) {
-    reading = "Buy-side conditions are supportive with stable to improving momentum.";
+    context = "Buy-side conditions supportive with stable/improving momentum.";
+    bias = "LONG BIAS";
     action = "Prioritize long scenarios only if gate and trigger conditions align.";
     if (hasNumber(longProbPct) && hasNumber(shortProbPct) && Number(shortProbPct) - Number(longProbPct) >= 15) {
-      reading = "Context looks supportive, but directional probability currently favors SHORT.";
+      context = "Context supportive, but probability currently favors SHORT.";
+      bias = "MIXED";
       action = "Treat long bias as conditional and wait for stronger long confirmation.";
     }
-    return { reading, action };
+    return { context, bias, action };
   }
 
   if (der === "DELEVERAGING") {
-    reading = "Open interest is contracting, which usually means weaker conviction.";
+    context = "Open interest contracting, conviction weakening.";
+    bias = "NEUTRAL / RISK-OFF";
     action = "Reduce aggressiveness and wait for cleaner directional confirmation.";
-    return { reading, action };
+    return { context, bias, action };
   }
   if (der === "RELEVERAGING") {
-    reading = "Open interest is rebuilding on short-term horizons.";
+    context = "Open interest rebuilding on short-term horizons.";
+    bias = "MOMENTUM BUILDING";
     action = "Favor continuation setups, but only with clean trigger confirmation.";
-    return { reading, action };
+    return { context, bias, action };
   }
   if (der === "MIXED") {
-    reading = "Open interest is mixed across 1h/4h, so conviction is still uneven.";
+    context = "Open interest mixed across 1h/4h, conviction uneven.";
+    bias = "MIXED";
     action = "Trade smaller or wait for alignment before increasing risk.";
-    return { reading, action };
+    return { context, bias, action };
   }
 
-  return { reading, action };
+  return { context, bias, action };
 }
 
 function buildStatusActionLine(status, currentAction, criticalLevel) {
@@ -1168,8 +1177,9 @@ function render(brief) {
     longProbPct,
     shortProbPct
   );
-  setText("marketSummaryReading", `Reading: ${marketSummary.reading}`);
-  setText("marketSummaryAction", `Now: ${marketSummary.action}`);
+  setText("marketSummaryReading", `Context: ${marketSummary.context}`);
+  setText("marketSummaryBias", `Bias: ${marketSummary.bias}`);
+  setText("marketSummaryAction", `Action now: ${marketSummary.action}`);
 
   setText("execPosUsd", hasNumber(brief.position_size?.usdc) ? `${fmt(brief.position_size.usdc)} USDC` : "--");
   setText("execRisk", hasNumber(brief.position_size?.risk_per_trade) ? `${fmt(brief.position_size.risk_per_trade)} USDC` : "--");
