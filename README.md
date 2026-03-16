@@ -124,6 +124,34 @@ Then open:
 http://127.0.0.1:8000
 ```
 
+### B.0) Windows launch in double-click mode
+
+Files at project root:
+
+- `launch_dashboard.ps1` -> robust launcher (starts server, waits, opens browser, clear errors)
+- `launch_dashboard.bat` -> simple double-click launcher
+- `launch_dashboard_silent.vbs` -> cleaner double-click launcher (hidden window)
+- launcher loads environment variables from `.env` before starting server (Kraken/Telegram keys included), with support for `KEY=value` and `$env:KEY="value"` lines
+
+Default URL opened:
+
+```text
+http://127.0.0.1:8000
+```
+
+Desktop shortcut setup:
+
+1. Right click `launch_dashboard.bat` (or `launch_dashboard_silent.vbs`) -> **Send to > Desktop (create shortcut)**.
+2. Rename shortcut to: `Trading Brief Dashboard`.
+3. Optional icon: shortcut **Properties > Change Icon...** and choose any `.ico` file.
+4. Double-click shortcut to launch dashboard.
+
+Error behavior:
+
+- If startup fails, launcher prints a clear error and points to logs:
+  - `logs/dashboard-server.out.log`
+  - `logs/dashboard-server.err.log`
+
 ### B.1) Access from tablet/phone on local network (LAN)
 
 `python server.py` binds to localhost only (`127.0.0.1`), so it is not reachable from other devices.
@@ -173,6 +201,55 @@ Notes:
 
 - If Kraken secrets are missing in GitHub, the build still works with fallbacks.
 - The standalone page auto-refreshes `brief.json` every 5 minutes client-side.
+
+### D.1) Cloud Run deployment (full Python backend, accessible from iPad)
+
+This repo includes:
+
+- `Dockerfile`
+- `.dockerignore`
+- `deploy_cloudrun.ps1`
+- `cloudrun.env.yaml.example`
+
+One-time setup:
+
+1. Install Google Cloud SDK (`gcloud`) and login:
+
+```powershell
+gcloud auth login
+gcloud auth application-default login
+```
+
+2. Enable required APIs (replace `YOUR_PROJECT_ID`):
+
+```powershell
+gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com --project YOUR_PROJECT_ID
+```
+
+3. Create env file from template at repo root:
+
+```powershell
+Copy-Item cloudrun.env.yaml.example cloudrun.env.yaml
+```
+
+Then fill `cloudrun.env.yaml` with your real values (`KRAKEN_API_KEY`, `KRAKEN_API_SECRET`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`).
+
+Deploy:
+
+```powershell
+.\deploy_cloudrun.ps1 -ProjectId YOUR_PROJECT_ID -Region europe-west1 -ServiceName trading-brief-dashboard
+```
+
+After deploy:
+
+- script prints and opens service URL
+- open same URL on iPad (Safari)
+- optional: Safari -> Share -> Add to Home Screen
+
+Notes:
+
+- Current deploy settings are cost-safe by default (`min-instances=0`, `max-instances=1`).
+- Cloud Run free tier is usage-based; monitor billing/usage in GCP console.
 
 ### E) Telegram alerts (optional)
 

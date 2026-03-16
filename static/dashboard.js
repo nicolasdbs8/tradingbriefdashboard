@@ -465,15 +465,39 @@ function deriveDerivativesState(derivatives) {
   return { state: "NEUTRAL", tone: "gray" };
 }
 
-function buildMarketSummary(liquidityRaw, volRaw, derivativesState, levelEventLabel, longProbPct, shortProbPct) {
+function buildMarketSummary(
+  liquidityRaw,
+  volRaw,
+  derivativesState,
+  levelEventLabel,
+  longProbPct,
+  shortProbPct,
+  activeSetup,
+  gateOpen
+) {
   const liq = String(liquidityRaw || "pending").toLowerCase();
   const vol = String(volRaw || "pending").toLowerCase();
   const der = String(derivativesState || "pending").toUpperCase();
   const evt = String(levelEventLabel || "NONE").toUpperCase();
+  const setup = String(activeSetup || "NONE").toUpperCase();
 
   let context = "Mixed market conditions.";
   let bias = "NEUTRAL";
   let action = "WAIT for clearer confirmation.";
+
+  if (setup === "LONG") {
+    context = "Long setup is active from structure trigger.";
+    bias = "LONG ACTIVE";
+    action = gateOpen ? "Execute LONG plan." : "LONG trigger detected, gate blocked.";
+    return { context, bias, action };
+  }
+
+  if (setup === "SHORT") {
+    context = "Short setup is active from structure trigger.";
+    bias = "SHORT ACTIVE";
+    action = gateOpen ? "Execute SHORT plan." : "SHORT trigger detected, gate blocked.";
+    return { context, bias, action };
+  }
 
   if (evt.includes("CONFIRMED")) {
     context = "Structure event confirmed.";
@@ -498,7 +522,7 @@ function buildMarketSummary(liquidityRaw, volRaw, derivativesState, levelEventLa
 
   if (liq === "bullish" && (vol === "up" || vol === "flat") && (der === "RELEVERAGING" || der === "BULLISH" || der === "NEUTRAL")) {
     context = "Buy-side conditions supportive.";
-    bias = "LONG BIAS";
+    bias = "LONG BIAS (CONTEXT)";
     action = "Prioritize LONG only if gate + trigger align.";
     if (hasNumber(longProbPct) && hasNumber(shortProbPct) && Number(shortProbPct) - Number(longProbPct) >= 15) {
       context = "Supportive context, but SHORT probability leads.";
@@ -562,6 +586,17 @@ function computeRR(entry, stop, target) {
   const reward = Math.abs(Number(target) - Number(entry));
   if (reward < 0) return null;
   return reward / risk;
+}
+
+function pickCandidateSide(activeSetup, longRR, shortRR, longProbPct, shortProbPct) {
+  if (activeSetup === "LONG" || activeSetup === "SHORT") return activeSetup;
+  if (hasNumber(longProbPct) && hasNumber(shortProbPct) && Number(longProbPct) !== Number(shortProbPct)) {
+    return Number(longProbPct) > Number(shortProbPct) ? "LONG" : "SHORT";
+  }
+  if (hasNumber(longRR) && hasNumber(shortRR) && Number(longRR) !== Number(shortRR)) {
+    return Number(longRR) > Number(shortRR) ? "LONG" : "SHORT";
+  }
+  return null;
 }
 
 function setupDeltaText(entry, stop, target) {
@@ -1146,6 +1181,7 @@ function render(brief) {
   const setupClass = brief.setup_score?.class ?? brief.setup_score?.quality ?? "pending";
   const gateOpen = brief.setup_score?.trade_gate;
   const gateReason = brief.setup_score?.reason ?? "pending";
+  const activeSetup = brief.trade?.active_setup ?? "NONE";
   if (hasNumber(scoreValue)) {
     const fill = document.getElementById("setupScoreFill");
     if (fill) fill.style.width = `${Math.max(0, Math.min(100, (Number(scoreValue) / 10) * 100))}%`;
@@ -1301,7 +1337,9 @@ function render(brief) {
     derivativesState,
     levelEvent.label,
     longProbPct,
-    shortProbPct
+    shortProbPct,
+    activeSetup,
+    Boolean(gateOpen)
   );
   setText("marketSummaryReading", marketSummary.context);
   setText("marketSummaryBias", `Bias ${marketSummary.bias}`);
@@ -1328,7 +1366,8 @@ function render(brief) {
     brief.trade?.estimated_cost_pct ??
     brief.trade?.cost_pct ??
     brief.trade?.filters?.estimated_cost_pct ??
-    brief.trade?.filters?.cost_pct;
+    brief.trade?.filters?.cost_pct ??
+    brief.trade?.filters?.cost_round_trip_pct;
   const costReason = brief.trade?.filters?.cost_reason;
   const stopDistancePct = hasNumber(brief.trade?.stop_distance_pct) ? Number(brief.trade.stop_distance_pct) : null;
   setText("execCost", hasNumber(estimatedCostPct) ? fmtPct(estimatedCostPct, "pending") : "pending");
@@ -1369,10 +1408,24 @@ function render(brief) {
       estimatedCostPct
     )
   );
-  setText("execEntry", hasNumber(brief.trade?.entry) ? fmtUsdc(brief.trade.entry) : "pending");
-  setText("execStopCandidate", hasNumber(brief.trade?.stop) ? fmtUsdc(brief.trade.stop) : "pending");
-
-  const activeSetup = brief.trade?.active_setup ?? "NONE";
+  const candidateSide = pickCandidateSide(activeSetup, longRR, shortRR, longProbPct, shortProbPct);
+  const fallbackEntry = candidateSide === "LONG" ? brief.setups?.long?.entry : candidateSide === "SHORT" ? brief.setups?.short?.entry : null;
+  const fallbackStop = candidateSide === "LONG" ? brief.setups?.long?.stop : candidateSide === "SHORT" ? brief.setups?.short?.stop : null;
+  const entryCandidate = hasNumber(brief.trade?.entry) ? brief.trade?.entry : fallbackEntry;
+  const stopCandidate = hasNumber(brief.trade?.stop) ? brief.trade?.stop : fallbackStop;
+  const isActiveExecutableSetup = activeSetup === "LONG" || activeSetup === "SHORT";
+  if (isActiveExecutableSetup) {
+    setText("execEntryLabel", `Entry (${activeSetup})`);
+    setText("execStopCandidateLabel", `Stop (${activeSetup})`);
+  } else if (candidateSide === "LONG" || candidateSide === "SHORT") {
+    setText("execEntryLabel", `Watch candidate (${candidateSide})`);
+    setText("execStopCandidateLabel", `Watch stop (${candidateSide})`);
+  } else {
+    setText("execEntryLabel", "Watch candidate");
+    setText("execStopCandidateLabel", "Watch stop");
+  }
+  setText("execEntry", hasNumber(entryCandidate) ? fmtUsdc(entryCandidate) : "pending");
+  setText("execStopCandidate", hasNumber(stopCandidate) ? fmtUsdc(stopCandidate) : "pending");
   const action = deriveCurrentAction(brief, scoreValue);
   syncTpDetails(Boolean(gateOpen), activeSetup);
   setText("decisionAction", action);

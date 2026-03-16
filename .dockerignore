@@ -1,0 +1,13 @@
+.git
+.github
+.venv
+.pytest_cache
+__pycache__
+backup
+logs
+*.pyc
+*.pyo
+*.pyd
+.env
+.alerts_state.json
+brief.json
