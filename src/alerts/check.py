@@ -18,6 +18,33 @@ except ImportError:  # optional dependency for local .env usage
     load_dotenv = None
 
 
+def _load_env_fallback(path: str = ".env") -> None:
+    env_path = Path(path)
+    if not env_path.exists():
+        return
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+
+        # Accept PowerShell style: $env:KEY="value"
+        if line.lower().startswith("$env:") and "=" in line:
+            left, right = line.split("=", 1)
+            key = left.split(":", 1)[1].strip()
+            value = right.strip().strip('"').strip("'")
+            if key and value and not os.getenv(key):
+                os.environ[key] = value
+            continue
+
+        # Accept dotenv style: KEY=value
+        if "=" in line:
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key and value and not os.getenv(key):
+                os.environ[key] = value
+
+
 @dataclass
 class AlertDecision:
     alert_type: str
@@ -265,6 +292,8 @@ def _build_message(data: Dict[str, Any], alert_type: str, why_blocked: Optional[
 def run_check(config_path: str, state_path: str, dry_run: bool, force: bool) -> int:
     if load_dotenv:
         load_dotenv()
+    else:
+        _load_env_fallback(".env")
     cfg = load_config(config_path)
     brief = generate_trading_brief(config_path=config_path)
     data = brief.get("data", {})
