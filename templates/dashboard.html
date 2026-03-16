@@ -1,9 +1,9 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <title>Trading Brief Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css?v=28" />
+    <link rel="stylesheet" href="/static/style.css?v=29" />
     <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
   </head>
   <body>
@@ -88,6 +88,11 @@
         <section class="card mini-chart-top">
           <div class="card-title">MINI CHART</div>
           <div class="chart-box top-chart-box" id="miniChart">Reserved area for future chart</div>
+          <div class="mini-chart-legend" id="miniChartLegend">
+            <span class="legend-item"><span class="legend-dot price"></span>Price</span>
+            <span class="legend-item"><span class="legend-dot critical"></span>Critical</span>
+            <span class="legend-item"><span class="legend-dot trigger"></span>Trigger(s)</span>
+          </div>
         </section>
       </section>
 
@@ -108,8 +113,18 @@
           <div class="card-title">CRITICAL LEVEL</div>
           <div class="card-value value-xl" id="criticalLevel">not available</div>
           <div class="card-sub" id="criticalLevelDist">Distance: not available</div>
-          <div class="card-sub" id="criticalLevelType">Trigger type: pending</div>
-          <div class="card-sub" id="criticalLevelSource">source not available</div>
+          <div class="critical-line">
+            <span class="critical-label">LEVEL TYPE</span>
+            <span class="critical-value" id="criticalLevelType">pending</span>
+          </div>
+          <div class="critical-line">
+            <span class="critical-label">LEVEL SOURCE</span>
+            <span class="critical-value" id="criticalLevelSource">not available</span>
+          </div>
+          <details class="critical-meta-details">
+            <summary>Technical metadata</summary>
+            <div class="card-sub" id="criticalLevelMeta">pending</div>
+          </details>
         </div>
         <div class="card snapshot-card informative-card" id="probCard">
           <div class="card-title">DIRECTIONAL PROBABILITY</div>
@@ -196,7 +211,13 @@
           <div class="decision-level" id="decisionLevel">Watch level: not available</div>
           <div class="decision-metric">
             <div class="decision-metric-label">Trigger distance</div>
-            <div class="decision-metric-value" id="decisionTriggerDistanceValue">—</div>
+            <div class="decision-metric-value" id="decisionTriggerDistanceValue">--</div>
+          </div>
+          <div class="scanner-context-box">
+            <div class="scanner-context-title">SCANNER CONTEXT</div>
+            <div class="scanner-context-line">Selected because: <span id="scannerContextSelectedBecause">pending</span></div>
+            <div class="scanner-context-line">Score: <span id="scannerContextScore">pending</span></div>
+            <div class="scanner-context-line">Distance to trigger: <span id="scannerContextDistance">pending</span></div>
           </div>
           <div class="playbook-lines">
             <div class="playbook-line" id="playbookLong">Sweep + reclaim -> LONG</div>
@@ -207,13 +228,13 @@
 
         <div class="card execution-card compact-card">
           <div class="card-title">EXECUTION</div>
-          <div class="exec-line"><span>Position size</span><span id="execPosUsd">—</span></div>
-          <div class="exec-line"><span>Risk per trade</span><span id="execRisk">—</span></div>
-          <div class="exec-line"><span>Risk / total capital</span><span id="execRiskPct">—</span></div>
+          <div class="exec-line"><span>Position size</span><span id="execPosUsd">--</span></div>
+          <div class="exec-line"><span>Risk per trade</span><span id="execRisk">--</span></div>
+          <div class="exec-line"><span>Risk / total capital</span><span id="execRiskPct">--</span></div>
           <div class="exec-line" id="execStopLine"><span id="execStopLabel">Stop distance</span><span id="execStop">waiting trigger</span></div>
-          <div class="exec-line"><span>Exposure active</span><span id="execExposureActive">—</span></div>
+          <div class="exec-line"><span>Exposure active</span><span id="execExposureActive">--</span></div>
           <div class="exec-meter"><div class="exec-meter-fill" id="execExposureActiveBar"></div></div>
-          <div class="exec-line"><span>Exposure total</span><span id="execExposureTotal">—</span></div>
+          <div class="exec-line"><span>Exposure total</span><span id="execExposureTotal">--</span></div>
           <div class="exec-meter"><div class="exec-meter-fill" id="execExposureTotalBar"></div></div>
           <div class="exec-line"><span>Estimated cost</span><span id="execCost">pending</span></div>
           <div class="exec-line" id="execEntryLine"><span id="execEntryLabel">Entry candidate</span><span id="execEntry">pending</span></div>
@@ -295,6 +316,8 @@
 
     </div>
 
-    <script src="/static/dashboard.js?v=52"></script>
+    <script src="/static/dashboard.js?v=53"></script>
   </body>
 </html>
+
+

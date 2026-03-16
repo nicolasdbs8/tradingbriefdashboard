@@ -18,7 +18,9 @@ let universeAttention = null;
 let lastAttentionState = null;
 let unreadEvents = 0;
 let detailRefreshTimer = null;
+let selectedScannerRowData = null;
 const BASE_TITLE = "Trading Brief Dashboard";
+const NUMBER_LOCALE = "en-US";
 
 function initSoundToggle() {
   const toggle = document.getElementById("soundToggle");
@@ -111,7 +113,7 @@ function buildAlertSignature(brief) {
   const score = Number(brief.setup_score?.final ?? 0);
   const activeSetup = brief.trade?.active_setup ?? "NONE";
   const activeEvent = brief.level_event?.active_event ?? "none";
-  return `${activeSetup}:${activeEvent}:${score.toFixed(1)}`;
+  return `${activeSetup}:${activeEvent}:${fmtNumber(score, 1)}`;
 }
 
 function buildFaviconDataUrl(color) {
@@ -132,15 +134,15 @@ function setFaviconColor(color) {
 
 function attentionStateFrom(action, status, gateOpen, symbol) {
   if (action === "LONG ACTIVE" || action === "SHORT ACTIVE") {
-    return { tone: "green", icon: "🟢", label: action, color: "#22c55e", symbol };
+    return { tone: "green", icon: "[G]", label: action, color: "#22c55e", symbol };
   }
   if (action === "WATCH") {
-    return { tone: "orange", icon: "🟠", label: "WATCH", color: "#f59e0b", symbol };
+    return { tone: "orange", icon: "[W]", label: "WATCH", color: "#f59e0b", symbol };
   }
   if (!gateOpen && status === "NO SETUP") {
-    return { tone: "red", icon: "🔴", label: "BLOCKED", color: "#ef4444", symbol };
+    return { tone: "red", icon: "[R]", label: "BLOCKED", color: "#ef4444", symbol };
   }
-  return { tone: "gray", icon: "⚪", label: action || "WAIT", color: "#64748b", symbol };
+  return { tone: "gray", icon: "[.]", label: action || "WAIT", color: "#64748b", symbol };
 }
 
 function isMajorAttentionTransition(prevState, nextState) {
@@ -158,7 +160,7 @@ function applyAttentionState(next) {
     unreadEvents += 1;
     if (notifyEnabled && "Notification" in window && Notification.permission === "granted") {
       try {
-        new Notification(`${next.label} on ${symbol}`, {
+        new Notification(`${next.label} on ${next.symbol}`, {
           body: `State changed to ${next.label}. Open dashboard for details.`,
           silent: true,
         });
@@ -168,7 +170,7 @@ function applyAttentionState(next) {
     }
   }
   const unreadPrefix = unreadEvents > 0 ? `(${unreadEvents}) ` : "";
-  document.title = `${unreadPrefix}${next.icon} [${next.label}] ${next.symbol} · ${BASE_TITLE}`;
+  document.title = `${unreadPrefix}${next.icon} [${next.label}] ${next.symbol} | ${BASE_TITLE}`;
   lastAttentionState = next;
 }
 
@@ -207,21 +209,21 @@ function buildUniverseAttention(rows) {
   if (!best) return null;
   const isEngine = best.fast_mode !== true;
   if (isEngine && (best.action === "LONG ACTIVE" || best.action === "SHORT ACTIVE")) {
-    return { tone: "green", icon: "🟢", label: `${best.action}`, color: "#22c55e", symbol: best.symbol };
+    return { tone: "green", icon: "[G]", label: `${best.action}`, color: "#22c55e", symbol: best.symbol };
   }
   if (isEngine && best.gate_open) {
-    return { tone: "green", icon: "🟢", label: "GATE OPEN", color: "#16a34a", symbol: best.symbol };
+    return { tone: "green", icon: "[G]", label: "GATE OPEN", color: "#16a34a", symbol: best.symbol };
   }
   if (isEngine && best.action === "WATCH") {
-    return { tone: "orange", icon: "🟠", label: "WATCH", color: "#f59e0b", symbol: best.symbol };
+    return { tone: "orange", icon: "[W]", label: "WATCH", color: "#f59e0b", symbol: best.symbol };
   }
   if (best.interesting && hasNumber(best.opportunity_score) && Number(best.opportunity_score) >= 70) {
-    return { tone: "orange", icon: "🟠", label: "SCAN HOT", color: "#f59e0b", symbol: best.symbol };
+    return { tone: "orange", icon: "[W]", label: "SCAN HOT", color: "#f59e0b", symbol: best.symbol };
   }
   if (best.interesting) {
-    return { tone: "orange", icon: "🟠", label: "SCAN WATCH", color: "#f59e0b", symbol: best.symbol };
+    return { tone: "orange", icon: "[W]", label: "SCAN WATCH", color: "#f59e0b", symbol: best.symbol };
   }
-  return { tone: "gray", icon: "⚪", label: "SCAN OK", color: "#64748b", symbol: best.symbol || selectedSymbol };
+  return { tone: "gray", icon: "[.]", label: "SCAN OK", color: "#64748b", symbol: best.symbol || selectedSymbol };
 }
 
 async function fetchBrief(symbol = null) {
@@ -274,23 +276,30 @@ function hasNumber(n) {
   return n !== null && n !== undefined && !Number.isNaN(n);
 }
 
+function fmtNumber(n, decimals = 2, fallback = "not available") {
+  if (!hasNumber(n)) return fallback;
+  return Number(n).toLocaleString(NUMBER_LOCALE, {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+}
+
 function fmt(n) {
-  if (!hasNumber(n)) return "not available";
-  return Number(n).toFixed(2);
+  return fmtNumber(n, 2);
 }
 
 function fmtUsdc(n, fallback = "pending") {
   if (!hasNumber(n)) return fallback;
-  return `${fmt(n)} ${quoteCurrency}`;
+  return `${fmtNumber(n, 2)} ${quoteCurrency}`;
 }
 
 function fmtPriceCompact(n, fallback = "pending") {
   if (!hasNumber(n)) return fallback;
   const v = Number(n);
   if (Math.abs(v) >= 10000) {
-    return v.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    return v.toLocaleString(NUMBER_LOCALE, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
   }
-  return v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return v.toLocaleString(NUMBER_LOCALE, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function fmtPriceAdaptive(n, fallback = "pending") {
@@ -305,7 +314,7 @@ function fmtPriceAdaptive(n, fallback = "pending") {
   else if (abs >= 0.01) decimals = 5;
   else if (abs >= 0.001) decimals = 6;
   else decimals = 7;
-  return v.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  return v.toLocaleString(NUMBER_LOCALE, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
 
 function fmtPriceForPriceCard(n, fallback = "pending") {
@@ -318,7 +327,7 @@ function fmtPriceForPriceCard(n, fallback = "pending") {
   else if (abs >= 0.1) decimals = 4;
   else if (abs >= 0.01) decimals = 5;
   else decimals = 6;
-  return v.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  return v.toLocaleString(NUMBER_LOCALE, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
 
 function fmtUsdcCompact(n, fallback = "pending") {
@@ -337,26 +346,34 @@ function fmtOr(n, fallback = "--") {
 
 function fmtPct(n, fallback = "not available") {
   if (!hasNumber(n)) return fallback;
-  const rounded = Math.round(Number(n) * 10) / 10;
-  if (Math.abs(rounded % 1) < 0.001) return `${rounded.toFixed(0)}%`;
-  return `${rounded.toFixed(1)}%`;
+  return `${fmtNumber(n, 1, fallback)}%`;
+}
+
+function fmtPctPrecise(n, fallback = "not available") {
+  if (!hasNumber(n)) return fallback;
+  return `${fmtNumber(n, 2, fallback)}%`;
 }
 
 function fmtSignedPct(n, fallback = "--") {
   if (!hasNumber(n)) return fallback;
-  const rounded = Math.round(Number(n) * 100) / 100;
-  const sign = rounded > 0 ? "+" : "";
-  return `${sign}${rounded.toFixed(2)}%`;
+  const value = Number(n);
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${fmtNumber(value, 2, fallback)}%`;
+}
+
+function fmtMillions(n, fallback = "--") {
+  if (!hasNumber(n)) return fallback;
+  return `${fmtNumber(Number(n) / 1_000_000, 1)}M`;
 }
 
 function fmtLevel(n, fallback = "--") {
   if (!hasNumber(n)) return fallback;
-  return Number(n).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  return Number(n).toLocaleString(NUMBER_LOCALE, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
 function fmtLevelQuality(q) {
   if (!q || !hasNumber(q.score)) return "Q--";
-  return `Q${Number(q.score).toFixed(0)}`;
+  return `Q${fmtNumber(q.score, 0)}`;
 }
 
 function levelQualityLabel(q) {
@@ -377,9 +394,22 @@ function compactRegime(regime) {
 
 function compactSrMode(mode) {
   const raw = String(mode || "config");
-  if (raw === "manual_override") return "Manual SR";
-  if (raw === "auto_generated") return "Auto SR";
-  return "";
+  if (raw === "manual_override") return "MANUAL";
+  if (raw === "auto_generated") return "AUTO";
+  return "CONFIG";
+}
+
+function humanizeLevelSource(source) {
+  const raw = String(source || "1h").toLowerCase();
+  const map = {
+    "1h": "1H level",
+    "4h": "4H level",
+    "1d": "1D level",
+    pivot: "Pivot level",
+    vwap: "VWAP level",
+    dynamic: "Dynamic level",
+  };
+  return map[raw] || `${raw.toUpperCase()} level`;
 }
 
 function compactContext(reason) {
@@ -392,9 +422,9 @@ function compactContext(reason) {
 
 function deriveTriggerType(distancePct) {
   if (!hasNumber(distancePct)) return "pending";
-  if (Number(distancePct) > 0) return "Resistance";
-  if (Number(distancePct) < 0) return "Support";
-  return "Neutral";
+  if (Number(distancePct) > 0) return "RESISTANCE";
+  if (Number(distancePct) < 0) return "SUPPORT";
+  return "NEUTRAL";
 }
 
 function deriveLevelEventBadge(brief) {
@@ -441,59 +471,59 @@ function buildMarketSummary(liquidityRaw, volRaw, derivativesState, levelEventLa
   const der = String(derivativesState || "pending").toUpperCase();
   const evt = String(levelEventLabel || "NONE").toUpperCase();
 
-  let context = "Mixed conditions, no clean edge yet.";
+  let context = "Mixed market conditions.";
   let bias = "NEUTRAL";
-  let action = "Wait for stronger confirmation before acting.";
+  let action = "WAIT for clearer confirmation.";
 
   if (evt.includes("CONFIRMED")) {
-    context = "Structural event confirmed and actionable.";
+    context = "Structure event confirmed.";
     bias = evt.includes("BREAK") ? "SHORT" : evt.includes("SWEEP") ? "LONG" : "NEUTRAL";
-    action = "Focus on playbook direction and execute only if trade gate is open.";
+    action = "Follow playbook direction if gate is OPEN.";
     return { context, bias, action };
   }
 
   if (evt.includes("DETECTED")) {
-    context = "Potential structural event detected, not yet confirmed.";
+    context = "Structure signal detected, not confirmed.";
     bias = evt.includes("BREAK") ? "SHORT WATCH" : evt.includes("SWEEP") ? "LONG WATCH" : "NEUTRAL";
-    action = "Stay in watch mode and wait for confirmation.";
+    action = "WATCH and wait for confirmation.";
     return { context, bias, action };
   }
 
   if (liq === "bearish" && (vol === "down" || vol === "flat") && (der === "DELEVERAGING" || der === "BEARISH")) {
-    context = "Sellers dominate, momentum fading, positioning risk-off.";
+    context = "Sell-side pressure, weak momentum.";
     bias = "SHORT / DEFENSIVE";
-    action = "Avoid forcing entries and wait for a clean reclaim or confirmed break setup.";
+    action = "WAIT for reclaim or confirmed break.";
     return { context, bias, action };
   }
 
   if (liq === "bullish" && (vol === "up" || vol === "flat") && (der === "RELEVERAGING" || der === "BULLISH" || der === "NEUTRAL")) {
-    context = "Buy-side conditions supportive with stable/improving momentum.";
+    context = "Buy-side conditions supportive.";
     bias = "LONG BIAS";
-    action = "Prioritize long scenarios only if gate and trigger conditions align.";
+    action = "Prioritize LONG only if gate + trigger align.";
     if (hasNumber(longProbPct) && hasNumber(shortProbPct) && Number(shortProbPct) - Number(longProbPct) >= 15) {
-      context = "Context supportive, but probability currently favors SHORT.";
+      context = "Supportive context, but SHORT probability leads.";
       bias = "MIXED";
-      action = "Treat long bias as conditional and wait for stronger long confirmation.";
+      action = "Treat LONG as conditional, wait confirmation.";
     }
     return { context, bias, action };
   }
 
   if (der === "DELEVERAGING") {
-    context = "Open interest contracting, conviction weakening.";
+    context = "Open interest contracting.";
     bias = "NEUTRAL / RISK-OFF";
-    action = "Reduce aggressiveness and wait for cleaner directional confirmation.";
+    action = "Reduce risk and WAIT.";
     return { context, bias, action };
   }
   if (der === "RELEVERAGING") {
-    context = "Open interest rebuilding on short-term horizons.";
+    context = "Open interest rebuilding.";
     bias = "MOMENTUM BUILDING";
-    action = "Favor continuation setups, but only with clean trigger confirmation.";
+    action = "Favor continuation with clean trigger.";
     return { context, bias, action };
   }
   if (der === "MIXED") {
-    context = "Open interest mixed across 1h/4h, conviction uneven.";
+    context = "Open interest mixed on 1H/4H.";
     bias = "MIXED";
-    action = "Trade smaller or wait for alignment before increasing risk.";
+    action = "Trade smaller or WAIT for alignment.";
     return { context, bias, action };
   }
 
@@ -517,10 +547,10 @@ function buildTpRuleText(side, entry, tp1, sizeUsd, estimatedCostPct) {
   const movePct = ((sign * (Number(tp1.price) - Number(entry))) / Number(entry)) * 100;
   const closedNotional = Number(sizeUsd) * Number(tp1.size_pct);
   const grossLocked = closedNotional * (Math.abs(movePct) / 100);
-  let text = `Rule: TP1 ${fmtUsdcCompact(tp1.price)} (${(Number(tp1.size_pct) * 100).toFixed(0)}%) -> SL BE ${fmtUsdcCompact(entry)} | Lock +${fmt(grossLocked)} USDC`;
+  let text = `Rule: TP1 ${fmtUsdcCompact(tp1.price)} (${fmtNumber(Number(tp1.size_pct) * 100, 0)}%) -> SL BE ${fmtUsdcCompact(entry)} | Lock +${fmtNumber(grossLocked, 2)} ${quoteCurrency}`;
   if (hasNumber(estimatedCostPct)) {
     const netApprox = Math.max(0, grossLocked - closedNotional * (Number(estimatedCostPct) / 100));
-    text += ` | Net~ +${fmt(netApprox)} USDC`;
+    text += ` | Net~ +${fmtNumber(netApprox, 2)} ${quoteCurrency}`;
   }
   return text;
 }
@@ -542,7 +572,7 @@ function setupDeltaText(entry, stop, target) {
   const targetAbs = Math.abs(Number(target) - Number(entry));
   const stopPct = (stopAbs / Math.abs(Number(entry))) * 100;
   const targetPct = (targetAbs / Math.abs(Number(entry))) * 100;
-  return `Stop distance: ${fmtPriceAdaptive(stopAbs, "--")} (${fmt(stopPct)}%) | Target distance: ${fmtPriceAdaptive(targetAbs, "--")} (${fmt(targetPct)}%)`;
+  return `Stop distance: ${fmtPriceAdaptive(stopAbs, "--")} (${fmtPct(stopPct, "--")}) | Target distance: ${fmtPriceAdaptive(targetAbs, "--")} (${fmtPct(targetPct, "--")})`;
 }
 
 function clampPct(n) {
@@ -557,28 +587,29 @@ function setGateVisualState(gateOpen, reason) {
   body.classList.add(gateOpen ? "gate-open" : "gate-blocked");
   const gateBadge = document.getElementById("setupGateBadge");
   if (gateBadge) gateBadge.classList.toggle("xl", !gateOpen);
-  setText("setupGateReason", `Blocked reason: ${gateOpen ? "none" : humanizeBlockedReason(reason)}`);
+  const message = gateOpen ? "Reason: gate open, execution allowed." : `Reason: ${humanizeBlockedReason(reason)}`;
+  setText("setupGateReason", message);
 }
 
 function humanizeBlockedReason(reason) {
   if (!reason) return "pending";
   const txt = String(reason).trim();
   const map = {
-    cost_fail: "Costs too high vs stop distance",
-    cost_warn: "Costs elevated vs stop distance",
-    vwap_mismatch: "VWAP condition not met",
-    probability_below_threshold: "Directional probability below threshold",
-    probability_below_heads_up_threshold: "Heads-up probability below threshold",
-    liquidity_too_far: "Price too far from trigger zone",
-    inversion_not_confirmed_2bars: "Inversion not confirmed (2 bars)",
-    setup_score_below_threshold: "Setup score below threshold",
-    no_active_setup: "No active setup",
-    no_active_event: "No active level event",
+    cost_fail: "reduce costs or wait for a wider stop distance",
+    cost_warn: "costs elevated: wait for better price location",
+    vwap_mismatch: "wait until VWAP condition is met",
+    probability_below_threshold: "directional probability below threshold",
+    probability_below_heads_up_threshold: "heads-up probability below threshold",
+    liquidity_too_far: "wait until price is closer to trigger zone",
+    inversion_not_confirmed_2bars: "wait for inversion confirmation (2 bars)",
+    setup_score_below_threshold: "setup score below threshold",
+    no_active_setup: "no active setup yet",
+    no_active_event: "no active level event yet",
   };
   if (txt.startsWith("cost_fail:") || txt.startsWith("cost_warn:")) {
     const prefix = txt.startsWith("cost_warn:") ? "cost_warn:" : "cost_fail:";
     const detail = txt.slice(prefix.length).trim();
-    return `Costs too high vs stop distance (${detail || "details pending"})`;
+    return `reduce costs vs stop distance (${detail || "details pending"})`;
   }
   if (map[txt]) return map[txt];
   const parts = txt.split(";").map((part) => {
@@ -586,7 +617,7 @@ function humanizeBlockedReason(reason) {
     if (p.startsWith("cost_fail:") || p.startsWith("cost_warn:")) {
       const prefix = p.startsWith("cost_warn:") ? "cost_warn:" : "cost_fail:";
       const detail = p.slice(prefix.length).trim();
-      return `Costs too high vs stop distance (${detail || "details pending"})`;
+      return `reduce costs vs stop distance (${detail || "details pending"})`;
     }
     return map[p] || p;
   });
@@ -608,12 +639,12 @@ function buildCostHint(brief, reason, costReason, estimatedCostPct, stopDistance
     };
     const longStatus = statusOf(ratioL);
     const shortStatus = statusOf(ratioS);
-    const longTxt = ratioL !== null ? `${ratioL.toFixed(2)} ${longStatus}` : "--";
-    const shortTxt = ratioS !== null ? `${ratioS.toFixed(2)} ${shortStatus}` : "--";
+    const longTxt = ratioL !== null ? `${fmtNumber(ratioL, 2)} ${longStatus}` : "--";
+    const shortTxt = ratioS !== null ? `${fmtNumber(ratioS, 2)} ${shortStatus}` : "--";
     if (activeSetup === "LONG" || activeSetup === "SHORT") {
-      return `Cost L/S: ${longTxt} | ${shortTxt} (thr ${threshold.toFixed(2)}) • active ${activeSetup}`;
+      return `Cost L/S: ${longTxt} | ${shortTxt} (thr ${fmtNumber(threshold, 2)}) | active ${activeSetup}`;
     }
-    return `Cost L/S: ${longTxt} | ${shortTxt} (thr ${threshold.toFixed(2)})`;
+    return `Cost L/S: ${longTxt} | ${shortTxt} (thr ${fmtNumber(threshold, 2)})`;
   }
   const txt = [String(reason || ""), String(costReason || "")].join(" ; ");
   const ratioMatch = txt.match(/cost\/stop\s+([0-9.]+)\s*>\s*([0-9.]+)/i);
@@ -621,18 +652,18 @@ function buildCostHint(brief, reason, costReason, estimatedCostPct, stopDistance
     const ratio = Number(ratioMatch[1]);
     const threshold = Number(ratioMatch[2]);
     const status = ratio > threshold ? "WARN" : "OK";
-    return `Cost ratio: ${ratio.toFixed(2)} / ${threshold.toFixed(2)} (${status})`;
+    return `Cost ratio: ${fmtNumber(ratio, 2)} / ${fmtNumber(threshold, 2)} (${status})`;
   }
   const rrMatch = txt.match(/rr_net\s+([0-9.]+)\s*<\s*([0-9.]+)/i);
   if (rrMatch) {
     const rr = Number(rrMatch[1]);
     const min = Number(rrMatch[2]);
-    return `Net R/R: ${rr.toFixed(2)} / ${min.toFixed(2)} (LOW)`;
+    return `Net R/R: ${fmtNumber(rr, 2)} / ${fmtNumber(min, 2)} (LOW)`;
   }
   if (hasNumber(estimatedCostPct) && hasNumber(stopDistancePct) && Number(stopDistancePct) > 0) {
     const ratio = Number(estimatedCostPct) / Number(stopDistancePct);
     const status = ratio > 0.35 ? "HIGH" : ratio > 0.28 ? "WARN" : "OK";
-    return `Cost ratio: ${ratio.toFixed(2)} (${status})`;
+    return `Cost ratio: ${fmtNumber(ratio, 2)} (${status})`;
   }
   if (/cost_fail/i.test(txt) || /cost_warn/i.test(txt) || /cost\/stop/i.test(txt)) {
     return "Cost ratio: above threshold";
@@ -701,6 +732,34 @@ function symbolBadgeTone(row) {
   return "gray";
 }
 
+function scannerSelectedBecause(row) {
+  if (!row) return "pending";
+  if (row.fast_mode) return row.opportunity_label || "FAST SCAN";
+  if (row.action === "LONG ACTIVE" || row.action === "SHORT ACTIVE") return row.action;
+  if (row.action === "WATCH") return "WATCH";
+  return row.status || "WATCH";
+}
+
+function scannerScoreLine(row) {
+  if (!row) return "pending";
+  if (row.fast_mode) return hasNumber(row.opportunity_score) ? `${fmtNumber(row.opportunity_score, 0)}/100` : "pending";
+  return hasNumber(row.score) ? `${fmtNumber(row.score, 1)}/10` : "pending";
+}
+
+function scannerDistanceLine(row) {
+  if (!row) return "pending";
+  if (row.fast_mode) {
+    return hasNumber(row.change_24h_pct) ? fmtSignedPct(row.change_24h_pct, "pending") : "pending";
+  }
+  return hasNumber(row.trigger_distance_pct) ? fmtSignedPct(row.trigger_distance_pct, "pending") : "pending";
+}
+
+function renderScannerContext(row) {
+  setText("scannerContextSelectedBecause", scannerSelectedBecause(row));
+  setText("scannerContextScore", scannerScoreLine(row));
+  setText("scannerContextDistance", scannerDistanceLine(row));
+}
+
 function setSelectedSymbol(symbol) {
   selectedSymbol = symbol;
   localStorage.setItem("selectedSymbol", symbol);
@@ -764,6 +823,8 @@ function renderScanner(data) {
   setText("scanInteresting", String(summary.interesting ?? 0));
   setText("scanActiveSetups", String(summary.active_setups ?? 0));
   const selectedRow = allRows.find((row) => row.symbol === selectedSymbol);
+  selectedScannerRowData = selectedRow || null;
+  renderScannerContext(selectedScannerRowData);
   const livePrice = hasNumber(selectedRow?.live_price) ? selectedRow?.live_price : latestLivePrice;
   if (hasNumber(livePrice)) {
     let deltaSuffix = "";
@@ -771,9 +832,9 @@ function renderScanner(data) {
       const deltaPct = ((Number(livePrice) - Number(latestModelPrice)) / Number(latestModelPrice)) * 100;
       const sign = deltaPct >= 0 ? "+" : "";
       if (Math.abs(deltaPct) >= 0.01) {
-        deltaSuffix = ` (${sign}${deltaPct.toFixed(2)}%)`;
+        deltaSuffix = ` (${sign}${fmtNumber(deltaPct, 2)}%)`;
       } else if (Math.abs(deltaPct) > 0) {
-        deltaSuffix = ` (${sign}${(deltaPct * 100).toFixed(1)} bps)`;
+        deltaSuffix = ` (${sign}${fmtNumber(deltaPct * 100, 1)} bps)`;
       } else {
         deltaSuffix = " (unchanged)";
       }
@@ -799,6 +860,7 @@ function renderScanner(data) {
     const card = document.createElement("div");
     card.className = `scanner-row${row.symbol === selectedSymbol ? " selected" : ""}`;
 
+    // Level 1: symbol + status
     const top = document.createElement("div");
     top.className = "scanner-row-top";
     const symbol = document.createElement("div");
@@ -814,34 +876,46 @@ function renderScanner(data) {
     top.appendChild(symbol);
     top.appendChild(badge);
 
+    // Level 2: setup/tag class
+    const secondary = document.createElement("div");
+    secondary.className = "scanner-row-secondary";
     const labelLine = document.createElement("div");
     labelLine.className = "scanner-tag";
     labelLine.textContent = row.opportunity_label || (row.fast_mode ? "FAST SCAN" : "DETAILED");
+    const setupClass = document.createElement("div");
+    setupClass.className = "scanner-setup-class";
+    setupClass.textContent = row.setup_class || (row.fast_mode ? "FAST" : "PENDING");
+    secondary.appendChild(labelLine);
+    secondary.appendChild(setupClass);
 
-    const meta = document.createElement("div");
-    meta.className = "scanner-meta";
+    // Level 3: score + distance/opportunity
+    const tertiary = document.createElement("div");
+    tertiary.className = "scanner-row-tertiary";
     const score = document.createElement("span");
     score.className = "scanner-score";
     if (row.fast_mode) {
-      score.textContent = hasNumber(row.opportunity_score) ? `Opp ${Number(row.opportunity_score).toFixed(0)}/100` : "Opp pending";
+      score.textContent = hasNumber(row.opportunity_score) ? `Opp ${fmtNumber(row.opportunity_score, 0)}/100` : "Opp pending";
     } else {
-      score.textContent = hasNumber(row.score) ? `Score ${Number(row.score).toFixed(1)}/10` : "Score pending";
+      score.textContent = hasNumber(row.score) ? `Score ${fmtNumber(row.score, 1)}/10` : "Score pending";
     }
     const dist = document.createElement("span");
     if (row.fast_mode) {
       const move = hasNumber(row.change_24h_pct) ? Number(row.change_24h_pct) : null;
       dist.className = `scanner-distance ${hasNumber(move) && move >= 0 ? "near" : "far"}`;
-      dist.textContent = hasNumber(move) ? `${move >= 0 ? "+" : ""}${move.toFixed(2)}%` : "--";
+      dist.textContent = hasNumber(move) ? `${move >= 0 ? "+" : ""}${fmtNumber(move, 2)}%` : "--";
     } else {
       const isNear = hasNumber(row.trigger_distance_pct) && Math.abs(Number(row.trigger_distance_pct)) <= 0.35;
       dist.className = `scanner-distance ${isNear ? "near" : "far"}`;
       dist.textContent = hasNumber(row.trigger_distance_pct) ? fmtSignedPct(row.trigger_distance_pct) : "--";
     }
-    meta.appendChild(score);
-    meta.appendChild(dist);
+    tertiary.appendChild(score);
+    tertiary.appendChild(dist);
 
     card.appendChild(top);
-    card.appendChild(labelLine);
+    card.appendChild(secondary);
+    card.appendChild(tertiary);
+
+    // Level 4: secondary data
     if (row.fast_mode && hasNumber(row.range_pos_pct)) {
       const range = document.createElement("div");
       range.className = "scanner-range";
@@ -851,16 +925,25 @@ function renderScanner(data) {
       range.appendChild(fill);
       card.appendChild(range);
     }
-    const stats = document.createElement("div");
-    stats.className = "scanner-stats";
-    const volumeTxt = hasNumber(row.volume_usd) ? `Vol ${(Number(row.volume_usd) / 1_000_000).toFixed(0)}M` : "Vol --";
-    const spreadTxt = hasNumber(row.spread_pct) ? `Spread ${Number(row.spread_pct).toFixed(2)}%` : "Spread --";
-    const freshTxt = hasNumber(row.freshness_sec) ? `Fresh ${Number(row.freshness_sec)}s` : "Fresh --";
+    const quaternary = document.createElement("div");
+    quaternary.className = "scanner-row-quaternary";
+    const opportunity = document.createElement("span");
+    opportunity.className = "scanner-opportunity";
+    opportunity.textContent = hasNumber(row.opportunity_score) ? `Opportunity ${fmtNumber(row.opportunity_score, 0)}/100` : "Opportunity --";
+    const stats = document.createElement("span");
+    stats.className = "scanner-secondary-chip";
+    const volumeTxt = hasNumber(row.volume_usd) ? `Vol ${fmtMillions(row.volume_usd)}` : "Vol --";
+    const spreadTxt = hasNumber(row.spread_pct) ? `Spread ${fmtPctPrecise(row.spread_pct, "--")}` : "Spread --";
+    const freshTxt = hasNumber(row.freshness_sec) ? `Fresh ${fmtNumber(row.freshness_sec, 0)}s` : "Fresh --";
     stats.textContent = `${volumeTxt} | ${spreadTxt} | ${freshTxt}`;
-    card.appendChild(stats);
-    card.appendChild(meta);
+    quaternary.appendChild(opportunity);
+    quaternary.appendChild(stats);
+    card.appendChild(quaternary);
+
     card.addEventListener("click", async () => {
       setSelectedSymbol(row.symbol);
+      selectedScannerRowData = row;
+      renderScannerContext(selectedScannerRowData);
       await refresh(true);
       await refreshScanner();
     });
@@ -1014,20 +1097,18 @@ function render(brief) {
   setText("marketBiasSub", `Bias type: ${biasKind}`);
   setText("priceSub", "Model price (15m close)");
   setText("criticalLevel", fmtUsdcCompact(brief.critical_level, "not available"));
-  setText("criticalLevelDist", `${fmtSignedPct(brief.critical_level_distance_pct)} from price`);
-  setText("criticalLevelType", `${deriveTriggerType(brief.critical_level_distance_pct)} setup`);
+  setText("criticalLevelDist", `Distance: ${fmtSignedPct(brief.critical_level_distance_pct)} from price`);
+  const triggerType = deriveTriggerType(brief.critical_level_distance_pct);
+  setText("criticalLevelType", triggerType);
   const srSourceRaw = String(brief.sr_levels_source || "config");
   const srMode = compactSrMode(srSourceRaw);
   const levelQuality = fmtLevelQuality(brief.critical_level_quality);
   const levelQualityTxt = levelQualityLabel(brief.critical_level_quality).toUpperCase();
   const regime = compactRegime(brief.critical_regime);
-  const sourceParts = [
-    `Src ${String(brief.critical_level_source ?? "1h").toUpperCase()}`,
-    `${levelQuality} ${levelQualityTxt}`,
-    regime,
-  ];
-  if (srMode) sourceParts.push(srMode);
-  setText("criticalLevelSource", sourceParts.join(" | "));
+  const levelSource = humanizeLevelSource(brief.critical_level_source ?? "1h");
+  setText("criticalLevelSource", levelSource);
+  const metaParts = [`Quality ${levelQuality} (${levelQualityTxt})`, `Regime ${regime}`, `Mode ${srMode}`];
+  setText("criticalLevelMeta", metaParts.join(" | "));
 
   const hasBear = /bear/i.test(biasReasonRaw);
   const hasBull = /bull/i.test(biasReasonRaw);
@@ -1042,7 +1123,7 @@ function render(brief) {
   if (hasNumber(scoreValue)) {
     const fill = document.getElementById("setupScoreFill");
     if (fill) fill.style.width = `${Math.max(0, Math.min(100, (Number(scoreValue) / 10) * 100))}%`;
-    setText("setupScoreValue", `${Number(scoreValue).toFixed(1)} / 10`);
+    setText("setupScoreValue", `${fmtNumber(scoreValue, 1)} / 10`);
     const clsTone =
       setupClass === "PRIORITY" ? "green" : setupClass === "VALID" ? "orange" : setupClass === "WATCHLIST" ? "gray" : "red";
     setBadge("setupBadge", setupClass, clsTone);
@@ -1055,6 +1136,15 @@ function render(brief) {
     setBadge("setupGateBadge", "BLOCKED", "red");
   }
   setGateVisualState(Boolean(gateOpen), gateReason);
+  renderScannerContext(
+    selectedScannerRowData || {
+      fast_mode: false,
+      action: deriveCurrentAction(brief, scoreValue),
+      status: brief.trade?.active_setup === "LONG" || brief.trade?.active_setup === "SHORT" ? "SETUP ACTIVE" : "WATCH",
+      score: scoreValue,
+      trigger_distance_pct: brief.critical_level_distance_pct,
+    }
+  );
 
   if (brief.directional_probability) {
     const prob = brief.directional_probability;
@@ -1098,18 +1188,23 @@ function render(brief) {
       candleSeries.setData(brief.mini_chart.candles);
       clearLevelLines();
       const levels = brief.mini_chart.levels || {};
-      const activeCritical = levels.critical;
-      const regimeRaw = String(brief.critical_regime || "range_pullback");
-      const altCritical = regimeRaw === "bullish_breakout" ? levels.critical_short : levels.critical_long;
-      addLevelLine(activeCritical, "#3b82f6", "Critical", 2, 0);
-      if (hasNumber(activeCritical) && hasNumber(altCritical)) {
-        const gapPct = Math.abs((Number(altCritical) - Number(activeCritical)) / Number(activeCritical)) * 100;
-        if (gapPct >= 0.25) {
-          addLevelLine(altCritical, "rgba(148,163,184,0.8)", "Alt critical", 1, 2);
-        }
+      const currentPrice = hasNumber(brief.live_price) ? brief.live_price : brief.price;
+      const critical = hasNumber(levels.critical) ? levels.critical : brief.critical_level;
+      const triggerLong = hasNumber(levels.critical_long) ? levels.critical_long : brief.critical_level_long;
+      const triggerShort = hasNumber(levels.critical_short) ? levels.critical_short : brief.critical_level_short;
+
+      addLevelLine(currentPrice, "rgba(203,213,225,0.95)", "Price", 1, 0);
+      addLevelLine(critical, "#3b82f6", "Critical", 2, 0);
+
+      if (hasNumber(triggerLong)) {
+        addLevelLine(triggerLong, "rgba(34,197,94,0.85)", "Trigger LONG", 1, 2);
       }
-      addLevelLine(levels.range_low, "rgba(34,197,94,0.55)", "Range Low", 1, 2);
-      addLevelLine(levels.range_high, "rgba(239,68,68,0.55)", "Range High", 1, 2);
+      if (hasNumber(triggerShort)) {
+        addLevelLine(triggerShort, "rgba(245,158,11,0.9)", "Trigger SHORT", 1, 2);
+      }
+
+      addLevelLine(levels.range_low, "rgba(34,197,94,0.35)", "Range Low", 1, 2);
+      addLevelLine(levels.range_high, "rgba(239,68,68,0.35)", "Range High", 1, 2);
       chart.timeScale().fitContent();
     }
   }
@@ -1128,18 +1223,18 @@ function render(brief) {
   setText("shortDelta", setupDeltaText(brief.setups?.short?.entry, brief.setups?.short?.stop, brief.setups?.short?.target));
   const longRR = computeRR(brief.setups?.long?.entry, brief.setups?.long?.stop, brief.setups?.long?.target);
   const shortRR = computeRR(brief.setups?.short?.entry, brief.setups?.short?.stop, brief.setups?.short?.target);
-  setText("longRR", hasNumber(longRR) ? longRR.toFixed(2) : "pending");
-  setText("shortRR", hasNumber(shortRR) ? shortRR.toFixed(2) : "pending");
+  setText("longRR", hasNumber(longRR) ? fmtNumber(longRR, 2) : "pending");
+  setText("shortRR", hasNumber(shortRR) ? fmtNumber(shortRR, 2) : "pending");
 
   if (brief.tp_plan_long && brief.tp_plan_long.length >= 3) {
-    setText("tp1L", `TP1 ${fmtUsdcCompact(brief.tp_plan_long[0].price)} (${(brief.tp_plan_long[0].size_pct * 100).toFixed(0)}%)`);
-    setText("tp2L", `TP2 ${fmtUsdcCompact(brief.tp_plan_long[1].price)} (${(brief.tp_plan_long[1].size_pct * 100).toFixed(0)}%)`);
-    setText("tp3L", `TP3 ${fmtUsdcCompact(brief.tp_plan_long[2].price)} (${(brief.tp_plan_long[2].size_pct * 100).toFixed(0)}%)`);
+    setText("tp1L", `TP1 ${fmtUsdcCompact(brief.tp_plan_long[0].price)} (${fmtNumber(brief.tp_plan_long[0].size_pct * 100, 0)}%)`);
+    setText("tp2L", `TP2 ${fmtUsdcCompact(brief.tp_plan_long[1].price)} (${fmtNumber(brief.tp_plan_long[1].size_pct * 100, 0)}%)`);
+    setText("tp3L", `TP3 ${fmtUsdcCompact(brief.tp_plan_long[2].price)} (${fmtNumber(brief.tp_plan_long[2].size_pct * 100, 0)}%)`);
   }
   if (brief.tp_plan_short && brief.tp_plan_short.length >= 3) {
-    setText("tp1S", `TP1 ${fmtUsdcCompact(brief.tp_plan_short[0].price)} (${(brief.tp_plan_short[0].size_pct * 100).toFixed(0)}%)`);
-    setText("tp2S", `TP2 ${fmtUsdcCompact(brief.tp_plan_short[1].price)} (${(brief.tp_plan_short[1].size_pct * 100).toFixed(0)}%)`);
-    setText("tp3S", `TP3 ${fmtUsdcCompact(brief.tp_plan_short[2].price)} (${(brief.tp_plan_short[2].size_pct * 100).toFixed(0)}%)`);
+    setText("tp1S", `TP1 ${fmtUsdcCompact(brief.tp_plan_short[0].price)} (${fmtNumber(brief.tp_plan_short[0].size_pct * 100, 0)}%)`);
+    setText("tp2S", `TP2 ${fmtUsdcCompact(brief.tp_plan_short[1].price)} (${fmtNumber(brief.tp_plan_short[1].size_pct * 100, 0)}%)`);
+    setText("tp3S", `TP3 ${fmtUsdcCompact(brief.tp_plan_short[2].price)} (${fmtNumber(brief.tp_plan_short[2].size_pct * 100, 0)}%)`);
   }
 
   setText("contextCapitalTotal", `Capital total: ${fmtUsdc(brief.capital?.total, "not available")}`);
@@ -1177,19 +1272,19 @@ function render(brief) {
     longProbPct,
     shortProbPct
   );
-  setText("marketSummaryReading", `Context: ${marketSummary.context}`);
-  setText("marketSummaryBias", `Bias: ${marketSummary.bias}`);
-  setText("marketSummaryAction", `Action now: ${marketSummary.action}`);
+  setText("marketSummaryReading", marketSummary.context);
+  setText("marketSummaryBias", `Bias ${marketSummary.bias}`);
+  setText("marketSummaryAction", marketSummary.action);
 
-  setText("execPosUsd", hasNumber(brief.position_size?.usdc) ? `${fmt(brief.position_size.usdc)} USDC` : "--");
-  setText("execRisk", hasNumber(brief.position_size?.risk_per_trade) ? `${fmt(brief.position_size.risk_per_trade)} USDC` : "--");
+  setText("execPosUsd", hasNumber(brief.position_size?.usdc) ? `${fmtNumber(brief.position_size.usdc, 2)} ${quoteCurrency}` : "--");
+  setText("execRisk", hasNumber(brief.position_size?.risk_per_trade) ? `${fmtNumber(brief.position_size.risk_per_trade, 2)} ${quoteCurrency}` : "--");
   const riskPctTotal =
     hasNumber(brief.position_size?.risk_per_trade) && hasNumber(brief.capital?.total) && Number(brief.capital.total) > 0
       ? (Number(brief.position_size.risk_per_trade) / Number(brief.capital.total)) * 100
       : null;
-  setText("execRiskPct", hasNumber(riskPctTotal) ? `${fmt(riskPctTotal)}%` : "--");
-  setText("execExposureActive", hasNumber(brief.position_size?.exposure_active_pct) ? `${fmt(brief.position_size.exposure_active_pct)}%` : "--");
-  setText("execExposureTotal", hasNumber(brief.position_size?.exposure_total_pct) ? `${fmt(brief.position_size.exposure_total_pct)}%` : "--");
+  setText("execRiskPct", hasNumber(riskPctTotal) ? fmtPct(riskPctTotal, "--") : "--");
+  setText("execExposureActive", hasNumber(brief.position_size?.exposure_active_pct) ? fmtPct(brief.position_size.exposure_active_pct, "--") : "--");
+  setText("execExposureTotal", hasNumber(brief.position_size?.exposure_total_pct) ? fmtPct(brief.position_size.exposure_total_pct, "--") : "--");
   const activeBar = document.getElementById("execExposureActiveBar");
   const totalBar = document.getElementById("execExposureTotalBar");
   if (activeBar) activeBar.style.width = `${clampPct(brief.position_size?.exposure_active_pct)}%`;
@@ -1201,7 +1296,7 @@ function render(brief) {
     brief.trade?.filters?.cost_pct;
   const costReason = brief.trade?.filters?.cost_reason;
   const stopDistancePct = hasNumber(brief.trade?.stop_distance_pct) ? Number(brief.trade.stop_distance_pct) : null;
-  setText("execCost", hasNumber(estimatedCostPct) ? `${fmt(estimatedCostPct)}%` : "pending");
+  setText("execCost", hasNumber(estimatedCostPct) ? fmtPct(estimatedCostPct, "pending") : "pending");
   setText("setupCostHint", buildCostHint(brief, gateReason, costReason, estimatedCostPct, stopDistancePct));
   const gateIsOpen = Boolean(gateOpen);
   const stopLine = document.getElementById("execStopLine");
@@ -1215,7 +1310,7 @@ function render(brief) {
     if (stopLine) stopLine.classList.remove("hidden-line");
   } else {
     setText("execStopLabel", "Stop distance");
-    setText("execStop", hasNumber(brief.trade?.stop_distance_pct) ? `${fmt(brief.trade.stop_distance_pct)}%` : "waiting trigger");
+    setText("execStop", hasNumber(brief.trade?.stop_distance_pct) ? fmtPct(brief.trade.stop_distance_pct, "waiting trigger") : "waiting trigger");
     if (entryLine) entryLine.classList.remove("hidden-line");
     if (stopCandidateLine) stopCandidateLine.classList.remove("hidden-line");
   }
@@ -1374,4 +1469,5 @@ document.addEventListener("visibilitychange", () => {
     else document.title = BASE_TITLE;
   }
 });
+
 

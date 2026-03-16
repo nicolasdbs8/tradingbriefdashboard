@@ -224,9 +224,9 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 9px;
   background: rgba(12, 16, 21, 0.28);
-  padding: 7px 8px;
+  padding: 8px 9px;
   display: grid;
-  gap: 5px;
+  gap: 4px;
   cursor: pointer;
 }
 
@@ -249,11 +249,20 @@ body {
 
 .scanner-symbol {
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 780;
   color: #eaf3fd;
 }
 
-.scanner-meta {
+.scanner-row-secondary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.scanner-meta,
+.scanner-row-tertiary,
+.scanner-row-quaternary {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -263,22 +272,44 @@ body {
 }
 
 .scanner-score {
-  color: #d3e5f7;
+  color: #dbeaf8;
+  font-weight: 700;
 }
 
 .scanner-tag {
   font-size: 10px;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: #b9ccdf;
+  color: #c7d8ea;
+}
+
+.scanner-setup-class {
+  font-size: 10px;
+  color: #9fb2c6;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.scanner-opportunity {
+  font-size: 11px;
+  color: #a7bed3;
+}
+
+.scanner-secondary-chip {
+  font-size: 10px;
+  color: #8ca1b6;
+  letter-spacing: 0.02em;
+  opacity: 0.92;
 }
 
 .scanner-distance.near {
   color: #86efac;
+  font-weight: 700;
 }
 
 .scanner-distance.far {
   color: #fca5a5;
+  font-weight: 700;
 }
 
 .scanner-range {
@@ -297,10 +328,11 @@ body {
 
 .scanner-stats {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
   font-size: 10px;
-  color: #9fb2c6;
+  color: #8fa4b8;
+  opacity: 0.9;
 }
 
 select,
@@ -654,7 +686,18 @@ button {
 
 .gate-reason {
   margin-top: 8px;
-  color: #f6c6c6;
+  color: #f8d0d0;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.gate-reason-label {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: #fca5a5;
+  text-transform: uppercase;
+  margin-right: 5px;
+  font-weight: 700;
 }
 
 .setup-cost-hint {
@@ -767,15 +810,15 @@ button {
 
 .market-summary-reading,
 .market-summary-action {
-  font-size: 12px;
-  line-height: 1.35;
-  color: #d6e3f0;
+  font-size: 11px;
+  line-height: 1.3;
+  color: #bfd0e2;
 }
 
 .market-summary-action {
   margin-top: 4px;
-  color: #e9f3ff;
-  font-weight: 600;
+  color: #ddeaf7;
+  font-weight: 650;
 }
 
 .compact-card {
@@ -1016,9 +1059,17 @@ body.gate-blocked #setupScoreCard {
 }
 
 body.gate-blocked #setupGateBadge {
-  font-size: 12px;
-  padding: 6px 12px;
+  font-size: 13px;
+  padding: 6px 13px;
   letter-spacing: 0.1em;
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.4) inset;
+}
+
+body.gate-blocked .gate-reason {
+  background: rgba(120, 30, 30, 0.25);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 8px;
+  padding: 7px 8px;
 }
 
 body.gate-blocked #probCard {
@@ -1122,6 +1173,91 @@ body.gate-open #setupScoreCard {
 .top-chart-box {
   height: 108px;
   margin-top: 8px;
+}
+
+.mini-chart-legend {
+  margin-top: 8px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 10px;
+  color: #9db1c5;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.legend-dot {
+  width: 9px;
+  height: 2px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.legend-dot.price {
+  background: #cbd5e1;
+}
+
+.legend-dot.critical {
+  background: #3b82f6;
+}
+
+.legend-dot.trigger {
+  background: #f59e0b;
+}
+
+.critical-line {
+  margin-top: 5px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.critical-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #8ea3b8;
+}
+
+.critical-value {
+  font-size: 12px;
+  color: #d8e6f4;
+  text-align: right;
+}
+
+.critical-meta-details {
+  margin-top: 6px;
+}
+
+.critical-meta-details summary {
+  cursor: pointer;
+  font-size: 11px;
+  color: #a1b6ca;
+}
+
+.scanner-context-box {
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9px;
+  background: rgba(12, 16, 21, 0.24);
+}
+
+.scanner-context-title {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9fb2c6;
+  margin-bottom: 4px;
+}
+
+.scanner-context-line {
+  font-size: 12px;
+  color: #d3e2f1;
+  line-height: 1.3;
 }
 
 .event-yes {
