@@ -108,9 +108,16 @@ def load_config(path: str | Path) -> Config:
     level_source_weight_cfg = filters_cfg.get("level_source_weight", {})
     level_source_weights = level_source_weight_cfg.get("weights", {})
 
-    exchange = os.getenv("DATA_EXCHANGE", data["data"]["exchange"])
-    fallback_exchange = os.getenv("DATA_FALLBACK_EXCHANGE", data["data"]["fallback_exchange"])
-    symbol = os.getenv("DATA_SYMBOL", data["data"]["symbol"])
+    def _env_or_default(name: str, default: str) -> str:
+        value = os.getenv(name)
+        if value is None:
+            return default
+        value = str(value).strip()
+        return value if value else default
+
+    exchange = _env_or_default("DATA_EXCHANGE", data["data"]["exchange"])
+    fallback_exchange = _env_or_default("DATA_FALLBACK_EXCHANGE", data["data"]["fallback_exchange"])
+    symbol = _env_or_default("DATA_SYMBOL", data["data"]["symbol"])
 
     return Config(
         exchange=exchange,
